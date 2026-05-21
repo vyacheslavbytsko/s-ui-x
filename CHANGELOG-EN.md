@@ -7,6 +7,16 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.3] - 2026-05-21 - stable release + Telegram backup schedule UX
+
+- Promoted the release line from `1.5.3-beta` to stable `1.5.3`.
+- Telegram database backup scheduling is now configured through friendly
+  presets and custom minute/hour intervals while continuing to store the
+  existing `telegramBackupCron` setting.
+- Existing custom cron expressions remain supported through Advanced cron mode.
+- Release, Windows, and Docker workflow dispatch defaults now target
+  `v1.5.3`.
+
 ## [1.5.3-beta] - 2026-05-20 - aggregated remediation + upstream parity (#1114)
 
 ### Multi-chat delivery ledger (P0-P5)

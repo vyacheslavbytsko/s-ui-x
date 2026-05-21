@@ -124,13 +124,55 @@
             </div>
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field
-              v-model="settings.telegramBackupCron"
-              :label="$t('telegram.backup.cron')"
-              :disabled="!telegramEnabled"
-              :error-messages="telegramBackupCronErrors"
-              :hide-details="telegramBackupCronErrors.length === 0"
-            />
+            <v-row>
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="telegramBackupScheduleMode"
+                  :items="telegramBackupScheduleOptions"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('telegram.backup.schedule.title')"
+                  :disabled="!telegramEnabled"
+                  hide-details
+                  @update:model-value="handleTelegramBackupScheduleModeChange"
+                />
+              </v-col>
+              <v-col v-if="telegramBackupScheduleMode === 'custom'" cols="12" md="3">
+                <v-text-field
+                  v-model.number="telegramBackupCustomValue"
+                  type="number"
+                  min="1"
+                  :max="telegramBackupCustomMax"
+                  :label="$t('telegram.backup.schedule.customValue')"
+                  :disabled="!telegramEnabled"
+                  :error-messages="telegramBackupScheduleErrors"
+                  :hide-details="telegramBackupScheduleErrors.length === 0"
+                  @update:model-value="updateTelegramBackupCronFromSchedule"
+                />
+              </v-col>
+              <v-col v-if="telegramBackupScheduleMode === 'custom'" cols="12" md="3">
+                <v-select
+                  v-model="telegramBackupCustomUnit"
+                  :items="telegramBackupScheduleUnitOptions"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('telegram.backup.schedule.customUnit')"
+                  :disabled="!telegramEnabled"
+                  hide-details
+                  @update:model-value="updateTelegramBackupCronFromSchedule"
+                />
+              </v-col>
+              <v-col v-if="telegramBackupScheduleMode === 'advanced'" cols="12">
+                <v-text-field
+                  v-model="telegramBackupAdvancedCron"
+                  :label="$t('telegram.backup.schedule.advancedCron')"
+                  :disabled="!telegramEnabled"
+                  :error-messages="telegramBackupScheduleErrors"
+                  :hide-details="telegramBackupScheduleErrors.length === 0"
+                  @update:model-value="updateTelegramBackupCronFromSchedule"
+                />
+              </v-col>
+            </v-row>
           </v-col>
         </v-row>
         <v-row>
@@ -157,7 +199,7 @@
       </section>
       <v-row align="center">
         <v-col cols="auto">
-          <v-btn color="primary" :loading="loading" :disabled="!stateChange" @click="save">
+          <v-btn color="primary" :loading="loading" :disabled="!stateChange || telegramBackupScheduleErrors.length > 0" @click="save">
             {{ $t('actions.save') }}
           </v-btn>
         </v-col>
@@ -185,6 +227,13 @@ import { FindDiff } from '@/plugins/utils'
 import { push } from 'notivue'
 import SettingsSecretField from '@/components/SettingsSecretField.vue'
 import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
+import {
+  parseTelegramBackupSchedule,
+  serializeTelegramBackupSchedule,
+  validateTelegramBackupSchedule,
+  type TelegramBackupScheduleMode,
+  type TelegramBackupScheduleUnit,
+} from '@/views/telegramBackupSchedule'
 
 type TelegramSettingsMap = Record<string, string>
 
@@ -249,6 +298,10 @@ const testResult = ref<TelegramResult | null>(null)
 const backupRunStatus = ref<BackupRunStatus | null>(null)
 const backupRunController = ref<AbortController | null>(null)
 const telegramBackupExcludeTableOptions = ['stats', 'client_ips', 'audit_events', 'changes']
+const telegramBackupScheduleMode = ref<TelegramBackupScheduleMode>('manual')
+const telegramBackupCustomValue = ref(15)
+const telegramBackupCustomUnit = ref<TelegramBackupScheduleUnit>('minutes')
+const telegramBackupAdvancedCron = ref('')
 
 const loadData = async () => {
   loading.value = true
@@ -267,6 +320,7 @@ onUnmounted(() => {
 const setData = (data: TelegramSettingsMap) => {
   const normalized = normalizeSecretFields({ ...defaultTelegramSettings, ...data })
   settings.value = pickTelegramSettings(normalized)
+  syncTelegramBackupScheduleFromCron(settings.value.telegramBackupCron)
   oldSettings.value = { ...settings.value }
 }
 
@@ -317,17 +371,60 @@ const telegramBackupExcludeTables = computed({
   },
 })
 
-const telegramBackupCronErrors = computed(() => {
-  const cron = settings.value.telegramBackupCron.trim()
-  if (!cron) return []
-  const parts = cron.split(/\s+/)
-  if (parts.length !== 5 || parts.some(part => part.includes('/0'))) {
-    return [i18n.global.t('telegram.backup.cronInvalid')]
-  }
-  return []
+const telegramBackupScheduleOptions = computed(() => [
+  { title: i18n.global.t('telegram.backup.schedule.manual'), value: 'manual' },
+  { title: i18n.global.t('telegram.backup.schedule.every15m'), value: 'every15m' },
+  { title: i18n.global.t('telegram.backup.schedule.every30m'), value: 'every30m' },
+  { title: i18n.global.t('telegram.backup.schedule.hourly'), value: 'hourly' },
+  { title: i18n.global.t('telegram.backup.schedule.every6h'), value: 'every6h' },
+  { title: i18n.global.t('telegram.backup.schedule.every12h'), value: 'every12h' },
+  { title: i18n.global.t('telegram.backup.schedule.daily3'), value: 'daily3' },
+  { title: i18n.global.t('telegram.backup.schedule.custom'), value: 'custom' },
+  { title: i18n.global.t('telegram.backup.schedule.advanced'), value: 'advanced' },
+])
+
+const telegramBackupScheduleUnitOptions = computed(() => [
+  { title: i18n.global.t('telegram.backup.schedule.minutes'), value: 'minutes' },
+  { title: i18n.global.t('telegram.backup.schedule.hours'), value: 'hours' },
+])
+
+const telegramBackupCustomMax = computed(() => telegramBackupCustomUnit.value === 'hours' ? 23 : 59)
+
+const telegramBackupScheduleState = computed(() => ({
+  mode: telegramBackupScheduleMode.value,
+  customValue: Number(telegramBackupCustomValue.value),
+  customUnit: telegramBackupCustomUnit.value,
+  advancedCron: telegramBackupAdvancedCron.value,
+}))
+
+const telegramBackupScheduleErrors = computed(() => {
+  return validateTelegramBackupSchedule(telegramBackupScheduleState.value)
+    .map(error => i18n.global.t('telegram.backup.schedule.errors.' + error))
 })
 
+const syncTelegramBackupScheduleFromCron = (cron: string) => {
+  const schedule = parseTelegramBackupSchedule(cron)
+  telegramBackupScheduleMode.value = schedule.mode
+  telegramBackupCustomValue.value = schedule.customValue
+  telegramBackupCustomUnit.value = schedule.customUnit
+  telegramBackupAdvancedCron.value = schedule.advancedCron
+}
+
+const updateTelegramBackupCronFromSchedule = () => {
+  settings.value.telegramBackupCron = serializeTelegramBackupSchedule(telegramBackupScheduleState.value)
+}
+
+const handleTelegramBackupScheduleModeChange = () => {
+  if (telegramBackupScheduleMode.value === 'advanced' && !telegramBackupAdvancedCron.value.trim()) {
+    telegramBackupAdvancedCron.value = settings.value.telegramBackupCron.trim()
+  }
+  updateTelegramBackupCronFromSchedule()
+}
+
 const save = async () => {
+  if (telegramBackupScheduleErrors.value.length > 0) {
+    return
+  }
   loading.value = true
   const payload = stripSecretPlaceholders(pickTelegramSettings(settings.value))
   if (payload.telegramEnabled !== 'true') {

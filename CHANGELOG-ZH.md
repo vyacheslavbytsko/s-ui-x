@@ -6,6 +6,14 @@
 
 ## 未发布
 
+## [1.5.3] - 2026-05-21 - 稳定版 + Telegram 备份频率 UX
+
+- 将发布线从 `1.5.3-beta` 提升为稳定版 `1.5.3`。
+- Telegram 数据库备份频率现在可通过预设和自定义分钟/小时间隔配置，
+  同时继续写入现有 `telegramBackupCron` 设置。
+- 已保存的自定义 cron 表达式仍可通过 Advanced cron 模式继续编辑。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.3`。
+
 ## [1.5.3-beta] - 2026-05-20 - 聚合修复 + 上游对齐 (#1114)
 
 ### Multi-chat 交付总览 (P0-P5)
