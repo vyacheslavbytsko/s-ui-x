@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util"
 )
 
 type Link struct {
@@ -18,9 +19,13 @@ type LinkService struct {
 }
 
 func (s *LinkService) GetLinks(linkJson *json.RawMessage, types string, clientInfo string) []string {
+	enabled, err := (&service.SettingService{}).GetSubLinkEnable()
+	if err == nil && !enabled {
+		return nil
+	}
 	links := []Link{}
 	var result []string
-	err := json.Unmarshal(*linkJson, &links)
+	err = json.Unmarshal(*linkJson, &links)
 	if err != nil {
 		return nil
 	}
@@ -29,7 +34,11 @@ func (s *LinkService) GetLinks(linkJson *json.RawMessage, types string, clientIn
 		case "external":
 			result = append(result, link.Uri)
 		case "sub":
-			subLinks := util.GetExternalLink(link.Uri)
+			subLinks, err := util.GetExternalLink(link.Uri)
+			if err != nil {
+				logger.Warning("sub: Error getting external subscription:", err)
+				continue
+			}
 			result = append(result, strings.Split(subLinks, "\n")...)
 		case "local":
 			if types == "all" {

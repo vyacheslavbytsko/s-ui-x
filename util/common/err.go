@@ -3,8 +3,9 @@ package common
 import (
 	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/alireza0/s-ui/logger"
+	"github.com/deposist/s-ui-rus-inst/logger"
 )
 
 func NewErrorf(format string, a ...interface{}) error {
@@ -13,7 +14,14 @@ func NewErrorf(format string, a ...interface{}) error {
 }
 
 func NewError(a ...interface{}) error {
-	msg := fmt.Sprintln(a...)
+	var builder strings.Builder
+	for i, item := range a {
+		if i > 0 {
+			builder.WriteByte(' ')
+		}
+		builder.WriteString(fmt.Sprint(item))
+	}
+	msg := builder.String()
 	return errors.New(msg)
 }
 

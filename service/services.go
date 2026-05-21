@@ -4,14 +4,23 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/gorm"
 )
 
-type ServicesService struct{}
+type ServicesService struct {
+	Runtime *Runtime
+}
+
+func (s *ServicesService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
 
 func (s *ServicesService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
@@ -78,28 +87,6 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			}
 		}
 
-		if corePtr.IsRunning() {
-			configData, err := srv.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if act == "edit" {
-				var oldTag string
-				err = tx.Model(model.Service{}).Select("tag").Where("id = ?", srv.Id).Find(&oldTag).Error
-				if err != nil {
-					return err
-				}
-				err = corePtr.RemoveService(oldTag)
-				if err != nil && err != os.ErrInvalid {
-					return err
-				}
-			}
-			err = corePtr.AddService(configData)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = tx.Save(&srv).Error
 		if err != nil {
 			return err
@@ -109,12 +96,6 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		err = json.Unmarshal(data, &tag)
 		if err != nil {
 			return err
-		}
-		if corePtr.IsRunning() {
-			err = corePtr.RemoveService(tag)
-			if err != nil && err != os.ErrInvalid {
-				return err
-			}
 		}
 		err = tx.Where("tag = ?", tag).Delete(model.Service{}).Error
 		if err != nil {
@@ -127,7 +108,8 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 }
 
 func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
-	if !corePtr.IsRunning() {
+	coreInstance := s.runtime().Core()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
 	var services []*model.Service
@@ -136,7 +118,7 @@ func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
 		return err
 	}
 	for _, srv := range services {
-		err = corePtr.RemoveService(srv.Tag)
+		err = coreInstance.RemoveService(srv.Tag)
 		if err != nil && err != os.ErrInvalid {
 			return err
 		}
@@ -144,7 +126,7 @@ func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
 		if err != nil {
 			return err
 		}
-		err = corePtr.AddService(srvConfig)
+		err = coreInstance.AddService(srvConfig)
 		if err != nil {
 			return err
 		}

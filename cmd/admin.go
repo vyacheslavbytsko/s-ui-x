@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/service"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/service"
 )
 
 func resetAdmin() {
@@ -54,11 +54,10 @@ func showAdmin() {
 		fmt.Println("get current user info failed,error info:", err)
 	}
 	username := userModel.Username
-	userpasswd := userModel.Password
-	if (username == "") || (userpasswd == "") {
+	if username == "" || userModel.Password == "" {
 		fmt.Println("current username or password is empty")
 	}
 	fmt.Println("First admin credentials:")
 	fmt.Println("\tUsername:\t", username)
-	fmt.Println("\tPassword:\t", userpasswd)
+	fmt.Println("\tPassword is hashed; use 's-ui admin -reset' or 's-ui admin -username/-password' to set a new one")
 }

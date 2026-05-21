@@ -3,9 +3,10 @@ package sub
 import (
 	"strings"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/util"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gopkg.in/yaml.v3"
 )
@@ -62,6 +63,10 @@ const ProxyGroups = `- name: Proxy
 `
 
 func (s *ClashService) GetClash(subId string) (*string, []string, error) {
+	enabled, err := s.SettingService.GetSubClashEnable()
+	if err == nil && !enabled {
+		return nil, nil, common.NewError("clash subscription disabled")
+	}
 
 	client, inDatas, err := s.getData(subId)
 	if err != nil {
@@ -96,8 +101,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 		return nil, nil, err
 	}
 
-	updateInterval, _ := s.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
+	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
 
 	return &resultStr, headers, nil
 }
@@ -153,6 +157,9 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				proxy["password"] = obMap["password"]
 				if congestion_control, ok := obMap["congestion_control"].(string); ok {
 					proxy["congestion-controller"] = congestion_control
+				}
+				if udpRelayMode, ok := obMap["udp_relay_mode"].(string); ok && udpRelayMode != "" {
+					proxy["udp-relay-mode"] = udpRelayMode
 				}
 			}
 		case "trojan":

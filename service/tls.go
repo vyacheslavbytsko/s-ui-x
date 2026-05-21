@@ -3,9 +3,9 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/gorm"
 )
@@ -13,12 +13,13 @@ import (
 type TlsService struct {
 	InboundService
 	ServicesService
+	Runtime *Runtime
 }
 
 func (s *TlsService) GetAll() ([]model.Tls, error) {
 	db := database.GetDB()
 	tlsConfig := []model.Tls{}
-	err := db.Model(model.Tls{}).Scan(&tlsConfig).Error
+	err := db.Model(model.Tls{}).Where("id > 0").Scan(&tlsConfig).Error
 	if err != nil {
 		return nil, err
 	}

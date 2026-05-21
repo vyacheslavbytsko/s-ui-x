@@ -1,16 +1,175 @@
 #!/bin/bash
+# S-UI installer with multilingual UI (English / Russian / Chinese).
+# Language choice can be supplied non-interactively via env:
+#   SUI_LANG=en|ru|zh  bash install.sh ...
+# A version tag (e.g. "v1.4.2-beta") may be provided as the only positional
+# argument to install a specific release.
 
 red='\033[0;31m'
 green='\033[0;32m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
+LANG_FILE="/etc/s-ui/lang"
+
+ask_language() {
+    if [[ -n "${SUI_LANG}" ]]; then
+        case "${SUI_LANG}" in
+            en|ru|zh) lang="${SUI_LANG}"; return ;;
+        esac
+    fi
+    if [[ -f "${LANG_FILE}" ]]; then
+        local saved
+        saved=$(cat "${LANG_FILE}" 2>/dev/null | tr -d '[:space:]')
+        case "${saved}" in
+            en|ru|zh) lang="${saved}"; return ;;
+        esac
+    fi
+    if [[ ! -t 0 ]]; then
+        # Non-interactive (piped from curl) and no env: default to English.
+        lang="en"
+        return
+    fi
+    echo
+    echo "Select language / Выберите язык / 请选择语言:"
+    echo "  1) English"
+    echo "  2) Русский"
+    echo "  3) 中文"
+    read -rp "[1-3, default 1]: " lang_choice
+    case "${lang_choice}" in
+        2|ru|RU|Russian|Русский) lang="ru" ;;
+        3|zh|ZH|Chinese|中文|简体中文) lang="zh" ;;
+        *) lang="en" ;;
+    esac
+}
+
+t() {
+    local key="$1"
+    if [[ "${lang}" == "zh" ]]; then
+        case "${key}" in
+            run_as_root)        echo "致命错误：请使用 root 权限运行此脚本"; return ;;
+            detect_failed)      echo "检测系统失败，请联系作者！"; return ;;
+            current_release)    echo "当前系统发行版为：$2"; return ;;
+            arch_label)         echo "架构：$2"; return ;;
+            arch_unsupported)   echo "不支持的 CPU 架构！"; return ;;
+            running)            echo "正在执行..."; return ;;
+            migrate)            echo "正在迁移..."; return ;;
+            install_done)       echo "安装/更新完成！出于安全考虑，建议修改面板设置"; return ;;
+            continue_settings)  echo "是否继续修改设置 [y/n]？"; return ;;
+            enter_panel_port)   echo "请输入面板端口（留空则使用现有/默认值）："; return ;;
+            enter_panel_path)   echo "请输入面板路径（留空则使用现有/默认值）："; return ;;
+            enter_sub_port)     echo "请输入订阅端口（留空则使用现有/默认值）："; return ;;
+            enter_sub_path)     echo "请输入订阅路径（留空则使用现有/默认值）："; return ;;
+            initializing)       echo "正在初始化，请稍候..."; return ;;
+            change_admin)       echo "是否修改管理员账号密码 [y/n]？"; return ;;
+            set_username)       echo "请设置用户名："; return ;;
+            set_password)       echo "请设置密码："; return ;;
+            current_admin)      echo "当前管理员账号密码："; return ;;
+            cancelled)          echo "已取消..."; return ;;
+            fresh_install_creds) echo "这是全新安装，出于安全考虑将生成随机登录信息："; return ;;
+            username_label)     echo "用户名：$2"; return ;;
+            password_label)     echo "密码：$2"; return ;;
+            lost_creds)         echo "如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
+            upgrade_keep_settings) echo "这是升级安装，将保留旧设置；如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
+            stop_singbox)       echo "正在停止 sing-box 服务..."; return ;;
+            bin_dir_exists)     echo "/usr/local/s-ui/bin 目录已存在！请检查其中内容，并在迁移后手动删除"; return ;;
+            fetching_latest)    echo "已获取 s-ui 最新版本：$2，开始安装..."; return ;;
+            rate_limited)       echo "获取 s-ui 版本失败，可能是 Github API 限制导致，请稍后重试"; return ;;
+            download_failed)    echo "下载 s-ui 失败，请确认服务器可以访问 Github"; return ;;
+            checksum_failed)    echo "s-ui 校验和验证失败，请稍后重试或检查发布文件"; return ;;
+            installing_specific) echo "开始安装 s-ui $2"; return ;;
+            download_failed_specific) echo "下载 s-ui $2 失败，请检查该版本是否存在"; return ;;
+            installed_running)  echo "s-ui $2 安装完成，现已启动并运行..."; return ;;
+            panel_url)          echo "你可以通过以下 URL 访问面板："; return ;;
+        esac
+    fi
+    case "${lang}:${key}" in
+        # generic
+        en:run_as_root)        echo "Critical error: run this script as root";;
+        ru:run_as_root)        echo "Критическая ошибка: запустите этот скрипт с правами root";;
+        en:detect_failed)      echo "Could not detect the system, please contact the maintainer.";;
+        ru:detect_failed)      echo "Не удалось определить систему, обратитесь к автору.";;
+        en:current_release)    echo "Detected distribution: $2";;
+        ru:current_release)    echo "Текущий дистрибутив: $2";;
+        en:arch_label)         echo "Architecture: $2";;
+        ru:arch_label)         echo "Архитектура: $2";;
+        en:arch_unsupported)   echo "CPU architecture is not supported.";;
+        ru:arch_unsupported)   echo "Архитектура CPU не поддерживается.";;
+
+        en:running)            echo "Running...";;
+        ru:running)            echo "Выполняется...";;
+        en:migrate)            echo "Running migration...";;
+        ru:migrate)            echo "Выполняется миграция...";;
+        en:install_done)       echo "Install/upgrade complete. For security reasons it is recommended to change panel settings.";;
+        ru:install_done)       echo "Установка/обновление завершены. Из соображений безопасности рекомендуется изменить настройки панели.";;
+        en:continue_settings)  echo "Continue editing settings? [y/n] ";;
+        ru:continue_settings)  echo "Продолжить изменение настроек? [y/n] ";;
+        en:enter_panel_port)   echo "Enter panel port (leave empty to keep current/default):";;
+        ru:enter_panel_port)   echo "Введите порт панели (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
+        en:enter_panel_path)   echo "Enter panel path (leave empty to keep current/default):";;
+        ru:enter_panel_path)   echo "Введите путь панели (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
+        en:enter_sub_port)     echo "Enter subscription port (leave empty to keep current/default):";;
+        ru:enter_sub_port)     echo "Введите порт подписки (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
+        en:enter_sub_path)     echo "Enter subscription path (leave empty to keep current/default):";;
+        ru:enter_sub_path)     echo "Введите путь подписки (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
+        en:initializing)       echo "Initializing, please wait...";;
+        ru:initializing)       echo "Инициализация, подождите...";;
+        en:change_admin)       echo "Change admin credentials? [y/n] ";;
+        ru:change_admin)       echo "Изменить логин и пароль администратора? [y/n] ";;
+        en:set_username)       echo "Username: ";;
+        ru:set_username)       echo "Имя пользователя: ";;
+        en:set_password)       echo "Password: ";;
+        ru:set_password)       echo "Пароль: ";;
+        en:current_admin)      echo "Current admin credentials:";;
+        ru:current_admin)      echo "Текущие учетные данные администратора:";;
+        en:cancelled)          echo "Cancelled.";;
+        ru:cancelled)          echo "Отменено.";;
+        en:fresh_install_creds) echo "Fresh install detected. For security a random username/password were generated:";;
+        ru:fresh_install_creds) echo "Это новая установка. Из соображений безопасности будут сгенерированы случайные данные для входа:";;
+        en:username_label)     echo "Username: $2";;
+        ru:username_label)     echo "Имя пользователя: $2";;
+        en:password_label)     echo "Password: $2";;
+        ru:password_label)     echo "Пароль: $2";;
+        en:lost_creds)         echo "If you forget the credentials, run 's-ui' to open the management menu.";;
+        ru:lost_creds)         echo "Если вы забыли данные для входа, введите s-ui для открытия меню настроек.";;
+        en:upgrade_keep_settings) echo "Upgrade detected; existing settings are preserved. Use 's-ui' menu to recover credentials if needed.";;
+        ru:upgrade_keep_settings) echo "Это обновление; старые настройки сохраняются. Откройте меню s-ui для восстановления данных входа.";;
+
+        en:stop_singbox)       echo "Stopping legacy sing-box service...";;
+        ru:stop_singbox)       echo "Останавливается служба sing-box...";;
+        en:bin_dir_exists)     echo "Directory /usr/local/s-ui/bin already exists; please review and remove it manually after the migration.";;
+        ru:bin_dir_exists)     echo "Каталог /usr/local/s-ui/bin уже существует. Проверьте его содержимое и удалите вручную после миграции.";;
+
+        en:fetching_latest)    echo "Got the latest s-ui version: $2. Starting installation...";;
+        ru:fetching_latest)    echo "Получена последняя версия s-ui: $2. Начинается установка...";;
+        en:rate_limited)       echo "Could not retrieve s-ui version. GitHub API rate limit may apply, please retry later.";;
+        ru:rate_limited)       echo "Не удалось получить версию s-ui. Возможно, сработало ограничение GitHub API. Повторите попытку позже.";;
+        en:download_failed)    echo "Could not download s-ui. Verify the server has access to GitHub.";;
+        ru:download_failed)    echo "Не удалось скачать s-ui. Убедитесь, что сервер имеет доступ к GitHub.";;
+        en:checksum_failed)    echo "s-ui checksum verification failed. Retry later or check the release files.";;
+        ru:checksum_failed)    echo "Проверка checksum s-ui не прошла. Повторите позже или проверьте файлы релиза.";;
+        en:installing_specific) echo "Installing s-ui $2";;
+        ru:installing_specific) echo "Начинается установка s-ui $2";;
+        en:download_failed_specific) echo "Could not download s-ui $2. Make sure this version exists.";;
+        ru:download_failed_specific) echo "Не удалось скачать s-ui $2. Проверьте, существует ли эта версия.";;
+        en:installed_running)  echo "s-ui $2 is installed, started and running...";;
+        ru:installed_running)  echo "s-ui $2 установлен, запущен и работает...";;
+        en:panel_url)          echo "Panel is available at:";;
+        ru:panel_url)          echo "Панель доступна по адресу:";;
+        *) echo "${key}";;
+    esac
+}
+
 cur_dir=$(pwd)
 
-# check root
-[[ $EUID -ne 0 ]] && echo -e "${red}Fatal error: ${plain} Please run this script with root privilege \n " && exit 1
+ask_language
 
-# Check OS and set release variable
+[[ $EUID -ne 0 ]] && echo -e "${red}$(t run_as_root)${plain}\n" && exit 1
+
+# Persist selected language so the management menu picks it up.
+mkdir -p "$(dirname "${LANG_FILE}")"
+printf '%s\n' "${lang}" >"${LANG_FILE}" 2>/dev/null || true
+
 if [[ -f /etc/os-release ]]; then
     source /etc/os-release
     release=$ID
@@ -18,10 +177,10 @@ elif [[ -f /usr/lib/os-release ]]; then
     source /usr/lib/os-release
     release=$ID
 else
-    echo "Failed to check the system OS, please contact the author!" >&2
+    echo "$(t detect_failed)" >&2
     exit 1
 fi
-echo "The OS release is: $release"
+echo "$(t current_release "${release}")"
 
 arch() {
     case "$(uname -m)" in
@@ -32,11 +191,11 @@ arch() {
     armv6* | armv6) echo 'armv6' ;;
     armv5* | armv5) echo 'armv5' ;;
     s390x) echo 's390x' ;;
-    *) echo -e "${green}Unsupported CPU architecture! ${plain}" && rm -f install.sh && exit 1 ;;
+    *) echo -e "${green}$(t arch_unsupported)${plain}" && rm -f install.sh && exit 1 ;;
     esac
 }
 
-echo "arch: $(arch)"
+echo "$(t arch_label "$(arch)")"
 
 install_base() {
     case "${release}" in
@@ -59,25 +218,23 @@ install_base() {
 }
 
 config_after_install() {
-    echo -e "${yellow}Migration... ${plain}"
+    echo -e "${yellow}$(t migrate)${plain}"
     /usr/local/s-ui/sui migrate
-    
-    echo -e "${yellow}Install/update finished! For security it's recommended to modify panel settings ${plain}"
-    read -p "Do you want to continue with the modification [y/n]? ": config_confirm
+
+    echo -e "${yellow}$(t install_done)${plain}"
+    read -rp "$(t continue_settings)" config_confirm
     if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-        echo -e "Enter the ${yellow}panel port${plain} (leave blank for existing/default value):"
-        read config_port
-        echo -e "Enter the ${yellow}panel path${plain} (leave blank for existing/default value):"
-        read config_path
+        echo -e "$(t enter_panel_port)"
+        read -r config_port
+        echo -e "$(t enter_panel_path)"
+        read -r config_path
 
-        # Sub configuration
-        echo -e "Enter the ${yellow}subscription port${plain} (leave blank for existing/default value):"
-        read config_subPort
-        echo -e "Enter the ${yellow}subscription path${plain} (leave blank for existing/default value):" 
-        read config_subPath
+        echo -e "$(t enter_sub_port)"
+        read -r config_subPort
+        echo -e "$(t enter_sub_path)"
+        read -r config_subPath
 
-        # Set configs
-        echo -e "${yellow}Initializing, please wait...${plain}"
+        echo -e "${yellow}$(t initializing)${plain}"
         params=""
         [ -z "$config_port" ] || params="$params -port $config_port"
         [ -z "$config_path" ] || params="$params -path $config_path"
@@ -85,84 +242,104 @@ config_after_install() {
         [ -z "$config_subPath" ] || params="$params -subPath $config_subPath"
         /usr/local/s-ui/sui setting ${params}
 
-        read -p "Do you want to change admin credentials [y/n]? ": admin_confirm
+        read -rp "$(t change_admin)" admin_confirm
         if [[ "${admin_confirm}" == "y" || "${admin_confirm}" == "Y" ]]; then
-            # First admin credentials
-            read -p "Please set up your username:" config_account
-            read -p "Please set up your password:" config_password
+            read -rp "$(t set_username)" config_account
+            read -rp "$(t set_password)" config_password
 
-            # Set credentials
-            echo -e "${yellow}Initializing, please wait...${plain}"
-            /usr/local/s-ui/sui admin -username ${config_account} -password ${config_password}
+            echo -e "${yellow}$(t initializing)${plain}"
+            /usr/local/s-ui/sui admin -username "${config_account}" -password "${config_password}"
         else
-            echo -e "${yellow}Your current admin credentials: ${plain}"
+            echo -e "${yellow}$(t current_admin)${plain}"
             /usr/local/s-ui/sui admin -show
         fi
     else
-        echo -e "${red}cancel...${plain}"
+        echo -e "${red}$(t cancelled)${plain}"
         if [[ ! -f "/usr/local/s-ui/db/s-ui.db" ]]; then
-            local usernameTemp=$(head -c 6 /dev/urandom | base64)
-            local passwordTemp=$(head -c 6 /dev/urandom | base64)
-            echo -e "this is a fresh installation,will generate random login info for security concerns:"
+            local usernameTemp
+            local passwordTemp
+            usernameTemp=$(head -c 6 /dev/urandom | base64)
+            passwordTemp=$(head -c 6 /dev/urandom | base64)
+            echo -e "$(t fresh_install_creds)"
             echo -e "###############################################"
-            echo -e "${green}username:${usernameTemp}${plain}"
-            echo -e "${green}password:${passwordTemp}${plain}"
+            echo -e "${green}$(t username_label "${usernameTemp}")${plain}"
+            echo -e "${green}$(t password_label "${passwordTemp}")${plain}"
             echo -e "###############################################"
-            echo -e "${red}if you forgot your login info,you can type ${green}s-ui${red} for configuration menu${plain}"
-            /usr/local/s-ui/sui admin -username ${usernameTemp} -password ${passwordTemp}
+            echo -e "${red}$(t lost_creds)${plain}"
+            /usr/local/s-ui/sui admin -username "${usernameTemp}" -password "${passwordTemp}"
         else
-            echo -e "${red} this is your upgrade,will keep old settings,if you forgot your login info,you can type ${green}s-ui${red} for configuration menu${plain}"
+            echo -e "${red}$(t upgrade_keep_settings)${plain}"
         fi
     fi
 }
 
 prepare_services() {
     if [[ -f "/etc/systemd/system/sing-box.service" ]]; then
-        echo -e "${yellow}Stopping sing-box service... ${plain}"
+        echo -e "${yellow}$(t stop_singbox)${plain}"
         systemctl stop sing-box
         rm -f /usr/local/s-ui/bin/sing-box /usr/local/s-ui/bin/runSingbox.sh /usr/local/s-ui/bin/signal
     fi
     if [[ -e "/usr/local/s-ui/bin" ]]; then
         echo -e "###############################################################"
-        echo -e "${green}/usr/local/s-ui/bin${red} directory exists yet!"
-        echo -e "Please check the content and delete it manually after migration ${plain}"
+        echo -e "${red}$(t bin_dir_exists)${plain}"
         echo -e "###############################################################"
     fi
     systemctl daemon-reload
 }
 
+verify_download_checksum() {
+    local artifact_name="$1"
+    local checksum_url="$2"
+    local checksum_name="${artifact_name}.sha256"
+
+    wget -N --no-check-certificate -O "/tmp/${checksum_name}" "${checksum_url}"
+    if [[ $? -ne 0 ]]; then
+        echo -e "${red}$(t checksum_failed)${plain}"
+        exit 1
+    fi
+    if ! (cd /tmp/ && sha256sum -c "${checksum_name}"); then
+        echo -e "${red}$(t checksum_failed)${plain}"
+        exit 1
+    fi
+}
+
 install_s-ui() {
     cd /tmp/
+    artifact_name="s-ui-linux-$(arch).tar.gz"
 
     if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/alireza0/s-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-rus-inst/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}Failed to fetch s-ui version, it maybe due to Github API restrictions, please try it later${plain}"
+            echo -e "${red}$(t rate_limited)${plain}"
             exit 1
         fi
-        echo -e "Got s-ui latest version: ${last_version}, beginning the installation..."
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/alireza0/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
+        echo -e "$(t fetching_latest "${last_version}")"
+        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
+        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}Downloading s-ui failed, please be sure that your server can access Github ${plain}"
+            echo -e "${red}$(t download_failed)${plain}"
             exit 1
         fi
+        verify_download_checksum "${artifact_name}" "${url}.sha256"
     else
         last_version=$1
-        url="https://github.com/alireza0/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
-        echo -e "Beginning the install s-ui v$1"
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz ${url}
+        [[ "${last_version}" != v* ]] && last_version="v${last_version}"
+        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
+        echo -e "$(t installing_specific "${last_version}")"
+        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}download s-ui v$1 failed,please check the version exists${plain}"
+            echo -e "${red}$(t download_failed_specific "${last_version}")${plain}"
             exit 1
         fi
+        verify_download_checksum "${artifact_name}" "${url}.sha256"
     fi
 
     if [[ -e /usr/local/s-ui/ ]]; then
         systemctl stop s-ui
     fi
 
-    tar zxvf s-ui-linux-$(arch).tar.gz
-    rm s-ui-linux-$(arch).tar.gz -f
+    tar zxvf "${artifact_name}"
+    rm "${artifact_name}" "${artifact_name}.sha256" -f
 
     chmod +x s-ui/sui s-ui/s-ui.sh
     cp s-ui/s-ui.sh /usr/bin/s-ui
@@ -175,14 +352,14 @@ install_s-ui() {
 
     systemctl enable s-ui --now
 
-    echo -e "${green}s-ui v${last_version}${plain} installation finished, it is up and running now..."
-    echo -e "You may access the Panel with following URL(s):${green}"
+    echo -e "${green}$(t installed_running "${last_version}")${plain}"
+    echo -e "$(t panel_url)${green}"
     /usr/local/s-ui/sui uri
     echo -e "${plain}"
     echo -e ""
     s-ui help
 }
 
-echo -e "${green}Executing...${plain}"
+echo -e "${green}$(t running)${plain}"
 install_base
-install_s-ui $1
+install_s-ui "$1"

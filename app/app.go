@@ -1,18 +1,20 @@
 package app
 
 import (
+	"context"
 	"log"
+	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/core"
-	"github.com/alireza0/s-ui/cronjob"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/sub"
-	"github.com/alireza0/s-ui/web"
-
-	"github.com/op/go-logging"
+	"github.com/deposist/s-ui-rus-inst/cmd/migration"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/core"
+	"github.com/deposist/s-ui-rus-inst/cronjob"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/sub"
+	"github.com/deposist/s-ui-rus-inst/web"
 )
 
 type APP struct {
@@ -21,8 +23,8 @@ type APP struct {
 	webServer     *web.Server
 	subServer     *sub.Server
 	cronJob       *cronjob.CronJob
-	logger        *logging.Logger
 	core          *core.Core
+	runtime       *service.Runtime
 }
 
 func NewApp() *APP {
@@ -34,6 +36,15 @@ func (a *APP) Init() error {
 
 	a.initLog()
 
+	// Run schema migrations against the on-disk DB before opening it. This
+	// turns the upgrade flow into a one-step procedure: drop in the new
+	// binary, restart, and the panel adapts the legacy schema in place. The
+	// run is a no-op if the database is already at the current version or if
+	// it does not yet exist (first install).
+	if err := migration.MigrateDb(); err != nil {
+		return err
+	}
+
 	err := database.InitDB(config.GetDBPath())
 	if err != nil {
 		return err
@@ -41,14 +52,22 @@ func (a *APP) Init() error {
 
 	// Init Setting
 	a.SettingService.GetAllSetting()
+	if err := ipmonitor.WarmUp(); err != nil {
+		return err
+	}
 
 	a.core = core.NewCore()
+	a.runtime = service.NewRuntime(a.core)
+	service.SetDefaultRuntime(a.runtime)
 
 	a.cronJob = cronjob.NewCronJob()
-	a.webServer = web.NewServer()
+	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
+	if err != nil {
+		return err
+	}
 	a.subServer = sub.NewServer()
 
-	a.configService = service.NewConfigService(a.core)
+	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
 
 	return nil
 }
@@ -88,6 +107,7 @@ func (a *APP) Start() error {
 }
 
 func (a *APP) Stop() {
+	service.StopRestartManager()
 	a.cronJob.Stop()
 	err := a.subServer.Stop()
 	if err != nil {
@@ -101,20 +121,35 @@ func (a *APP) Stop() {
 	if err != nil {
 		logger.Warning("stop Core err:", err)
 	}
+	tokenCtx, tokenCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer tokenCancel()
+	if err := service.StopTokenUseDebouncer(tokenCtx); err != nil {
+		logger.Warning("stop token use debouncer err:", err)
+	}
+	telegramCtx, telegramCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer telegramCancel()
+	if err := service.StopTelegramNotifier(telegramCtx); err != nil {
+		logger.Warning("stop telegram notifier err:", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := service.StopAuditWriter(ctx); err != nil {
+		logger.Warning("stop audit writer err:", err)
+	}
 }
 
 func (a *APP) initLog() {
 	switch config.GetLogLevel() {
 	case config.Debug:
-		logger.InitLogger(logging.DEBUG)
+		logger.Init(logger.LevelDebug)
 	case config.Info:
-		logger.InitLogger(logging.INFO)
+		logger.Init(logger.LevelInfo)
 	case config.Warn:
-		logger.InitLogger(logging.WARNING)
+		logger.Init(logger.LevelWarning)
 	case config.Error:
-		logger.InitLogger(logging.ERROR)
+		logger.Init(logger.LevelError)
 	default:
-		log.Fatal("unknown log level:", config.GetLogLevel())
+		logger.Init(logger.LevelInfo)
 	}
 }
 

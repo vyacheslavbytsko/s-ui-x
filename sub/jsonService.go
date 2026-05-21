@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/service"
-	"github.com/alireza0/s-ui/util"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
 const defaultJson = `
@@ -51,6 +52,11 @@ type JsonService struct {
 func (j *JsonService) GetJson(subId string, format string) (*string, []string, error) {
 	var jsonConfig map[string]interface{}
 
+	enabled, err := j.SettingService.GetSubJsonEnable()
+	if err == nil && !enabled {
+		return nil, nil, common.NewError("json subscription disabled")
+	}
+
 	client, inDatas, err := j.getData(subId)
 	if err != nil {
 		return nil, nil, err
@@ -89,16 +95,14 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
 
-	updateInterval, _ := j.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
+	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
 
 	return &resultStr, headers, nil
 }
 
 func (j *JsonService) getData(subId string) (*model.Client, []*model.Inbound, error) {
 	db := database.GetDB()
-	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
+	client, err := (&SubService{}).getClientBySubId(subId)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -245,6 +249,16 @@ func (j *JsonService) addDefaultOutbounds(outbounds *[]map[string]interface{}, o
 }
 
 func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
+	if err := j.addFragment(jsonConfig); err != nil {
+		return err
+	}
+	if err := j.addNoises(jsonConfig); err != nil {
+		return err
+	}
+	if err := j.addMux(jsonConfig); err != nil {
+		return err
+	}
+
 	rules_start := []interface{}{
 		map[string]interface{}{
 			"action": "sniff",
@@ -273,6 +287,9 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 		return err
 	}
 	if len(othersStr) == 0 {
+		if err := j.addDirectRules(route); err != nil {
+			return err
+		}
 		(*jsonConfig)["route"] = route
 		return nil
 	}
@@ -303,9 +320,203 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
 		route["default_domain_resolver"] = defaultDomainResolver
 	}
+	if err := j.addDirectRules(route); err != nil {
+		return err
+	}
 	(*jsonConfig)["route"] = route
 
 	return nil
+}
+
+func (j *JsonService) addDirectRules(route map[string]interface{}) error {
+	enabled, err := j.SettingService.GetSubJsonDirectRules()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	route["rule_set"] = mergeDirectRuleSets(route["rule_set"])
+	rules, _ := route["rules"].([]interface{})
+	route["rules"] = insertDirectRouteRules(rules)
+	return nil
+}
+
+func insertDirectRouteRules(rules []interface{}) []interface{} {
+	directRule := map[string]interface{}{
+		"rule_set": []string{"geosite-private", "geoip-private"},
+		"action":   "route",
+		"outbound": "direct",
+	}
+	if len(rules) == 0 {
+		return []interface{}{directRule}
+	}
+	result := make([]interface{}, 0, len(rules)+1)
+	result = append(result, rules[0], directRule)
+	result = append(result, rules[1:]...)
+	return result
+}
+
+func mergeDirectRuleSets(existing interface{}) []interface{} {
+	result := make([]interface{}, 0)
+	seen := map[string]bool{}
+	if ruleSets, ok := existing.([]interface{}); ok {
+		for _, ruleSet := range ruleSets {
+			if tag, ok := ruleSetTag(ruleSet); ok {
+				seen[tag] = true
+			}
+			result = append(result, ruleSet)
+		}
+	}
+	for _, ruleSet := range directRuleSets() {
+		tag, _ := ruleSetTag(ruleSet)
+		if seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		result = append(result, ruleSet)
+	}
+	return result
+}
+
+func ruleSetTag(ruleSet interface{}) (string, bool) {
+	ruleSetMap, ok := ruleSet.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	tag, ok := ruleSetMap["tag"].(string)
+	return tag, ok && tag != ""
+}
+
+func directRuleSets() []interface{} {
+	return []interface{}{
+		map[string]interface{}{
+			"tag":             "geosite-private",
+			"type":            "remote",
+			"format":          "binary",
+			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/private.srs",
+			"download_detour": "direct",
+		},
+		map[string]interface{}{
+			"tag":             "geoip-private",
+			"type":            "remote",
+			"format":          "binary",
+			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/private.srs",
+			"download_detour": "direct",
+		},
+	}
+}
+
+func (j *JsonService) addMux(jsonConfig *map[string]interface{}) error {
+	enabled, err := j.SettingService.GetSubJsonMux()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONMux(protocol) {
+			outbound["multiplex"] = map[string]interface{}{
+				"enabled":  true,
+				"protocol": "smux",
+			}
+		}
+	}
+	return nil
+}
+
+func (j *JsonService) addNoises(jsonConfig *map[string]interface{}) error {
+	noisesStr, err := j.SettingService.GetSubJsonNoises()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(noisesStr) == "" {
+		return nil
+	}
+	var noises []interface{}
+	if err := json.Unmarshal([]byte(noisesStr), &noises); err != nil {
+		return err
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONNoises(protocol) {
+			outbound["noises"] = noises
+		}
+	}
+	return nil
+}
+
+func (j *JsonService) addFragment(jsonConfig *map[string]interface{}) error {
+	fragmentStr, err := j.SettingService.GetSubJsonFragment()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(fragmentStr) == "" {
+		return nil
+	}
+	var fragment map[string]interface{}
+	if err := json.Unmarshal([]byte(fragmentStr), &fragment); err != nil {
+		return err
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONFragment(protocol) {
+			outbound["fragment"] = fragment
+		}
+	}
+	return nil
+}
+
+func jsonConfigOutbounds(jsonConfig *map[string]interface{}) (*[]map[string]interface{}, bool) {
+	switch outbounds := (*jsonConfig)["outbounds"].(type) {
+	case *[]map[string]interface{}:
+		return outbounds, true
+	case []map[string]interface{}:
+		return &outbounds, true
+	default:
+		return nil, false
+	}
+}
+
+func supportsJSONMux(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan", "shadowsocks":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsJSONNoises(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsJSONFragment(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan":
+		return true
+	default:
+		return false
+	}
 }
 
 func (j *JsonService) pushMixed(outbounds *[]map[string]interface{}, outTags *[]string, out map[string]interface{}) {

@@ -2,27 +2,44 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )
 
 type TokenInMemory struct {
-	Token    string
-	Expiry   int64
-	Username string
+	ID          uint   `json:"id"`
+	TokenHash   string `json:"tokenHash"`
+	TokenPrefix string `json:"tokenPrefix"`
+	Scope       string `json:"scope"`
+	Enabled     bool   `json:"enabled"`
+	Expiry      int64  `json:"expiry"`
+	Username    string `json:"username"`
 }
 
 type APIv2Handler struct {
 	ApiService
-	tokens *[]TokenInMemory
+	tokensMu sync.RWMutex
+	tokens   map[string]TokenInMemory
 }
 
-func NewAPIv2Handler(g *gin.RouterGroup) *APIv2Handler {
-	a := &APIv2Handler{}
+const (
+	apiUsernameKey          = "apiUsername"
+	apiTokenScopeKey        = "apiTokenScope"
+	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
+)
+
+func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
+	a := &APIv2Handler{
+		ApiService: NewApiService(options...),
+		tokens:     map[string]TokenInMemory{},
+	}
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -32,12 +49,28 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.Use(func(c *gin.Context) {
 		a.checkToken(c)
 	})
+	g.GET("/security/audit", a.ApiService.GetSecurityAudit)
+	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
+	g.POST("/telegram/test", a.ApiService.TestTelegram)
+	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
+	g.POST("/telegram/backup/run", a.ApiService.RunTelegramBackup)
+	g.POST("/import-xui/plan", a.ApiService.ImportXuiPlan)
+	g.POST("/import-xui/apply", a.ApiService.ImportXuiApply)
+	g.POST("/import-xui/rollback", a.ApiService.ImportXuiRollback)
+	g.GET("/import-xui/reports", a.ApiService.ImportXuiReports)
+	g.POST("/import-xui/remote/plan", a.ApiService.ImportXuiRemotePlan)
+	g.POST("/import-xui/remote/apply", a.ApiService.ImportXuiRemoteApply)
+	g.GET("/import-xui/remote/status", a.ApiService.XUIRemoteStatus)
+	g.GET("/import-xui/sync/profiles", a.ApiService.XUISyncProfiles)
+	g.POST("/import-xui/sync/profiles", a.ApiService.SaveXUISyncProfile)
+	g.POST("/import-xui/sync/run", a.ApiService.RunXUISyncProfile)
+	g.POST("/import-xui/sync/disable", a.ApiService.DisableXUISyncProfile)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
 
 func (a *APIv2Handler) postHandler(c *gin.Context) {
-	username := a.findUsername(c)
+	username := c.GetString(apiUsernameKey)
 	action := c.Param("postAction")
 
 	switch action {
@@ -53,6 +86,10 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 		a.ApiService.SubConvert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
+	case "import-xui":
+		a.ApiService.ImportXui(c)
+	case "rotateSubSecret":
+		a.ApiService.RotateSubSecret(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}
@@ -96,22 +133,45 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 }
 
 func (a *APIv2Handler) findUsername(c *gin.Context) string {
-	token := c.Request.Header.Get("Token")
-	for index, t := range *a.tokens {
-		if t.Expiry > 0 && t.Expiry < time.Now().Unix() {
-			(*a.tokens) = append((*a.tokens)[:index], (*a.tokens)[index+1:]...)
-			continue
-		}
-		if t.Token == token {
-			return t.Username
-		}
+	token, legacyHeader := apiTokenFromRequest(c)
+	if token == "" {
+		return ""
 	}
-	return ""
+	tokenHash, err := a.UserService.HashAPIToken(token)
+	if err != nil {
+		logger.Warning("unable to hash API token:", err)
+		return ""
+	}
+	now := time.Now().Unix()
+	a.tokensMu.RLock()
+	defer a.tokensMu.RUnlock()
+	t, ok := a.tokens[tokenHash]
+	if !ok {
+		return ""
+	}
+	if !t.Enabled {
+		return ""
+	}
+	if t.Expiry > 0 && t.Expiry < now {
+		return ""
+	}
+	if legacyHeader {
+		c.Header("Deprecation", "true")
+		c.Header("Sunset", legacyTokenHeaderSunset)
+		a.recordAudit(c, t.Username, "legacy_token_header_used", "api_token", service.AuditSeverityWarn, map[string]any{
+			"tokenPrefix": t.TokenPrefix,
+			"sunset":      legacyTokenHeaderSunset,
+		})
+	}
+	_ = a.UserService.RecordTokenUse(t.ID, getRemoteIp(c))
+	c.Set(apiTokenScopeKey, t.Scope)
+	return t.Username
 }
 
 func (a *APIv2Handler) checkToken(c *gin.Context) {
 	username := a.findUsername(c)
 	if username != "" {
+		c.Set(apiUsernameKey, username)
 		c.Next()
 		return
 	}
@@ -121,14 +181,34 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 
 func (a *APIv2Handler) ReloadTokens() {
 	tokens, err := a.ApiService.LoadTokens()
-	if err == nil {
-		var newTokens []TokenInMemory
-		err = json.Unmarshal(tokens, &newTokens)
-		if err != nil {
-			logger.Error("unable to load tokens: ", err)
-		}
-		a.tokens = &newTokens
-	} else {
+	if err != nil {
 		logger.Error("unable to load tokens: ", err)
+		return
 	}
+	var loaded []TokenInMemory
+	if len(tokens) > 0 {
+		if err := json.Unmarshal(tokens, &loaded); err != nil {
+			logger.Error("unable to load tokens: ", err)
+			return
+		}
+	}
+	newMap := make(map[string]TokenInMemory, len(loaded))
+	for _, t := range loaded {
+		newMap[t.TokenHash] = t
+	}
+	a.tokensMu.Lock()
+	a.tokens = newMap
+	a.tokensMu.Unlock()
+}
+
+func apiTokenFromRequest(c *gin.Context) (string, bool) {
+	auth := strings.TrimSpace(c.GetHeader("Authorization"))
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[len("bearer "):]), false
+	}
+	token := strings.TrimSpace(c.GetHeader("Token"))
+	if token == "" {
+		return "", false
+	}
+	return token, true
 }

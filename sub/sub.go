@@ -7,13 +7,15 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/middleware"
-	"github.com/alireza0/s-ui/network"
-	"github.com/alireza0/s-ui/service"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/middleware"
+	"github.com/deposist/s-ui-rus-inst/network"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,11 +61,104 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if subDomain != "" {
 		engine.Use(middleware.DomainValidator(subDomain))
 	}
+	engine.Use(middleware.SubSecurityHeaders())
+
+	registeredFormats := map[string]string{}
+	if err := rememberSubscriptionPath(registeredFormats, subPath, "link"); err != nil {
+		return nil, err
+	}
+	if err := rememberSubscriptionPath(registeredFormats, joinSubscriptionPath(subPath, "json"), "json"); err != nil {
+		return nil, err
+	}
+	if err := rememberSubscriptionPath(registeredFormats, joinSubscriptionPath(subPath, "clash"), "clash"); err != nil {
+		return nil, err
+	}
 
 	g := engine.Group(subPath)
 	NewSubHandler(g)
+	if subPath != "/" {
+		if err := registerSubscriptionFormatRoute(engine, registeredFormats, "/json/", "json"); err != nil {
+			return nil, err
+		}
+		if err := registerSubscriptionFormatRoute(engine, registeredFormats, "/clash/", "clash"); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.registerCustomFormatRoutes(engine, registeredFormats); err != nil {
+		return nil, err
+	}
 
 	return engine, nil
+}
+
+func (s *Server) registerCustomFormatRoutes(engine *gin.Engine, registered map[string]string) error {
+	jsonPath, err := s.SettingService.GetSubJsonPath()
+	if err != nil {
+		return err
+	}
+	clashPath, err := s.SettingService.GetSubClashPath()
+	if err != nil {
+		return err
+	}
+	if err := registerSubscriptionFormatRoute(engine, registered, jsonPath, "json"); err != nil {
+		return err
+	}
+	return registerSubscriptionFormatRoute(engine, registered, clashPath, "clash")
+}
+
+func registerSubscriptionFormatRoute(engine *gin.Engine, registered map[string]string, path string, format string) error {
+	path = normalizeSubscriptionRoutePath(path)
+	if path == "/" {
+		return common.NewError("subscription format path cannot be root")
+	}
+	if existing, ok := registered[path]; ok {
+		if existing == format {
+			return nil
+		}
+		return common.NewError("subscription path conflict: ", path)
+	}
+	registered[path] = format
+
+	handler := &SubHandler{}
+	group := engine.Group(path)
+	group.Use(rateLimitMiddleware())
+	switch format {
+	case "json":
+		group.GET("/:subid", handler.json)
+		group.HEAD("/:subid", handler.subHeaders)
+	case "clash":
+		group.GET("/:subid", handler.clash)
+		group.HEAD("/:subid", handler.subHeaders)
+	default:
+		return common.NewError("unknown subscription format: ", format)
+	}
+	return nil
+}
+
+func rememberSubscriptionPath(registered map[string]string, path string, format string) error {
+	path = normalizeSubscriptionRoutePath(path)
+	if existing, ok := registered[path]; ok && existing != format {
+		return common.NewError("subscription path conflict: ", path)
+	}
+	registered[path] = format
+	return nil
+}
+
+func joinSubscriptionPath(base string, child string) string {
+	if base == "/" {
+		return normalizeSubscriptionRoutePath(child)
+	}
+	return normalizeSubscriptionRoutePath(strings.TrimRight(base, "/") + "/" + strings.Trim(child, "/"))
+}
+
+func normalizeSubscriptionRoutePath(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
 }
 
 func (s *Server) Start() (err error) {
@@ -97,9 +192,13 @@ func (s *Server) Start() (err error) {
 	}
 
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listener, err := net.Listen("tcp", listenAddr)
+	listenResult, err := network.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
+	}
+	listener := listenResult.Listener
+	if listenResult.Fallback {
+		_ = service.RecordListenFallbackAudit("sub", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
 	}
 
 	if certFile != "" || keyFile != "" {
@@ -110,6 +209,7 @@ func (s *Server) Start() (err error) {
 		}
 		c := &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		}
 		listener = network.NewAutoHttpsListener(listener)
 		listener = tls.NewListener(listener, c)
@@ -123,11 +223,17 @@ func (s *Server) Start() (err error) {
 	s.listener = listener
 
 	s.httpServer = &http.Server{
-		Handler: engine,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
-		s.httpServer.Serve(listener)
+		if serveErr := s.httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
+			logger.Warning("Sub server stopped unexpectedly:", serveErr)
+		}
 	}()
 
 	return nil

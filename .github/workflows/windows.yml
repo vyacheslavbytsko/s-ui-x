@@ -2,20 +2,18 @@ name: Build S-UI for Windows
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        default: "v1.4.1"
+        type: string
   push:
-    branches:
-      - main
     tags:
-      - "*"
-    paths:
-      - '.github/workflows/windows.yml'
-      - 'frontend/**'
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'windows/**'
+      - "v*"
+
+permissions:
+  contents: write
 
 env:
   NODE_VERSION: "25"
@@ -26,26 +24,27 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Build frontend
         run: |
           cd frontend
           npm install
           npm run build
-          cd ..
 
-      - name: Upload frontend artifact
+      - name: Upload frontend build artifact
         uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
@@ -54,7 +53,7 @@ jobs:
 
   build-windows:
     needs: build-frontend
-    name: build-windows-${{ matrix.arch }}
+    name: Build-windows-${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,16 +62,16 @@ jobs:
           - { arch: arm64, runner: ubuntu-latest, cgo: "0" }
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
 
-      - name: Download frontend artifact
+      - name: Download frontend build artifact
         uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: web/html
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v6
         with:
           cache: false
@@ -82,13 +81,11 @@ jobs:
         if: matrix.arch == 'amd64'
         shell: powershell
         run: |
-          # Install Chocolatey if not available
           if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
             Set-ExecutionPolicy Bypass -Scope Process -Force
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
             iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           }
-          # Install zip
           choco install zip -y
 
       - name: Build s-ui
@@ -97,14 +94,14 @@ jobs:
           export CGO_ENABLED=${{ matrix.cgo }}
           export GOOS=windows
           export GOARCH=${{ matrix.arch }}
-          
+
           echo "Building for Windows ${{ matrix.arch }}"
           go version
           go env GOOS GOARCH
-          
+
           go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
           file sui.exe
-          
+
           mkdir s-ui-windows
           cp sui.exe s-ui-windows/
           cp -r windows/* s-ui-windows/
@@ -119,22 +116,43 @@ jobs:
         run: |
           zip -r "s-ui-windows-${{ matrix.arch }}.zip" s-ui-windows
 
-      - name: Upload files to Artifacts
+      - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: s-ui-windows-${{ matrix.arch }}
           path: ./s-ui-windows-${{ matrix.arch }}.zip
-          retention-days: 30
+          retention-days: 1
 
-      - name: Upload to Release
-        uses: svenstaro/upload-release-action@v2
-        if: |
-          (github.event_name == 'release' && github.event.action == 'published') ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+  publish-windows:
+    name: Publish Windows artifacts
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Normalize release tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          case "$TAG" in
+            v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
+            *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Download Windows build artifacts
+        uses: actions/download-artifact@v8
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref }}
-          file: s-ui-windows-${{ matrix.arch }}.zip
-          asset_name: s-ui-windows-${{ matrix.arch }}.zip
-          prerelease: true
-          overwrite: true
+          pattern: s-ui-windows-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish to current repository Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: s-ui ${{ steps.vars.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          fail_on_unmatched_files: true
+          files: release-assets/*

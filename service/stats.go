@@ -2,10 +2,14 @@ package service
 
 import (
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 
 	"gorm.io/gorm"
 )
@@ -16,16 +20,40 @@ type onlines struct {
 	Outbound []string `json:"outbound,omitempty"`
 }
 
-var onlineResources = &onlines{}
+var (
+	onlineResources   = &onlines{}
+	onlineResourcesMu sync.RWMutex
+)
 
 type StatsService struct {
+	Runtime *Runtime
 }
 
-func (s *StatsService) SaveStats(enableTraffic bool) error {
-	if corePtr == nil || !corePtr.IsRunning() {
+func (s *StatsService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
+
+type trafficDelta struct {
+	Resource string `json:"resource"`
+	Tag      string `json:"tag"`
+	Up       int64  `json:"up,omitempty"`
+	Down     int64  `json:"down,omitempty"`
+}
+
+type clientTrafficDelta struct {
+	up   int64
+	down int64
+}
+
+func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
+	coreInstance := s.runtime().Core()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
-	box := corePtr.GetInstance()
+	box := coreInstance.GetInstance()
 	if box == nil {
 		return nil
 	}
@@ -35,21 +63,37 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 	}
 	stats := st.GetStats()
 
-	// Reset onlines
-	onlineResources.Inbound = nil
-	onlineResources.Outbound = nil
-	onlineResources.User = nil
+	currentOnlines := onlines{}
 
 	if len(*stats) == 0 {
+		onlineResourcesMu.Lock()
+		onlineResources = &currentOnlines
+		onlineResourcesMu.Unlock()
+		if err := ipmonitor.Flush(); err != nil {
+			return err
+		}
+		publishStatsRealtime(currentOnlines, nil)
 		return nil
 	}
 
-	var err error
 	db := database.GetDB()
 	tx := db.Begin()
+	publishOnCommit := false
+	publishOnlines := onlines{}
+	var publishStats []model.Stats
+	clientDeltas := map[string]clientTrafficDelta{}
 	defer func() {
 		if err == nil {
-			tx.Commit()
+			if commitErr := tx.Commit().Error; commitErr != nil {
+				err = commitErr
+				realtime.Publish(realtime.TopicCoreState, map[string]any{
+					"warning": "stats_commit_failed",
+				})
+				return
+			}
+			if publishOnCommit {
+				publishStatsRealtime(publishOnlines, publishStats)
+			}
 		} else {
 			tx.Rollback()
 		}
@@ -58,33 +102,128 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 	for _, stat := range *stats {
 		if stat.Resource == "user" {
 			if stat.Direction {
-				err = tx.Model(model.Client{}).Where("name = ?", stat.Tag).
-					UpdateColumn("up", gorm.Expr("up + ?", stat.Traffic)).Error
+				delta := clientDeltas[stat.Tag]
+				delta.up += stat.Traffic
+				clientDeltas[stat.Tag] = delta
 			} else {
-				err = tx.Model(model.Client{}).Where("name = ?", stat.Tag).
-					UpdateColumn("down", gorm.Expr("down + ?", stat.Traffic)).Error
-			}
-			if err != nil {
-				return err
+				delta := clientDeltas[stat.Tag]
+				delta.down += stat.Traffic
+				clientDeltas[stat.Tag] = delta
 			}
 		}
 		if stat.Direction {
 			switch stat.Resource {
 			case "inbound":
-				onlineResources.Inbound = append(onlineResources.Inbound, stat.Tag)
+				currentOnlines.Inbound = append(currentOnlines.Inbound, stat.Tag)
 			case "outbound":
-				onlineResources.Outbound = append(onlineResources.Outbound, stat.Tag)
+				currentOnlines.Outbound = append(currentOnlines.Outbound, stat.Tag)
 			case "user":
-				onlineResources.User = append(onlineResources.User, stat.Tag)
+				currentOnlines.User = append(currentOnlines.User, stat.Tag)
 			}
 		}
 	}
+	if err := updateClientTrafficDeltas(tx, clientDeltas); err != nil {
+		return err
+	}
+	onlineResourcesMu.Lock()
+	onlineResources = &currentOnlines
+	onlineResourcesMu.Unlock()
+	publishOnCommit = true
+	publishOnlines = currentOnlines
+	publishStats = append([]model.Stats(nil), (*stats)...)
 
 	if !enableTraffic {
+		return ipmonitor.FlushTo(tx)
+	}
+	if err := tx.Create(&stats).Error; err != nil {
+		return err
+	}
+	return ipmonitor.FlushTo(tx)
+}
+
+func updateClientTrafficDeltas(tx *gorm.DB, deltas map[string]clientTrafficDelta) error {
+	if len(deltas) == 0 {
 		return nil
 	}
-	err = tx.Create(&stats).Error
-	return err
+	names := make([]string, 0, len(deltas))
+	for name, delta := range deltas {
+		if delta.up == 0 && delta.down == 0 {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for start := 0; start < len(names); start += 100 {
+		end := start + 100
+		if end > len(names) {
+			end = len(names)
+		}
+		if err := updateClientTrafficDeltaBatch(tx, names[start:end], deltas); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateClientTrafficDeltaBatch(tx *gorm.DB, names []string, deltas map[string]clientTrafficDelta) error {
+	if len(names) == 0 {
+		return nil
+	}
+	var query strings.Builder
+	args := make([]any, 0, len(names)*5)
+	query.WriteString("UPDATE clients SET up = up + CASE name")
+	for _, name := range names {
+		query.WriteString(" WHEN ? THEN ?")
+		args = append(args, name, deltas[name].up)
+	}
+	query.WriteString(" ELSE 0 END, down = down + CASE name")
+	for _, name := range names {
+		query.WriteString(" WHEN ? THEN ?")
+		args = append(args, name, deltas[name].down)
+	}
+	query.WriteString(" ELSE 0 END WHERE name IN (")
+	for i, name := range names {
+		if i > 0 {
+			query.WriteByte(',')
+		}
+		query.WriteByte('?')
+		args = append(args, name)
+	}
+	query.WriteByte(')')
+	return tx.Exec(query.String(), args...).Error
+}
+
+func publishStatsRealtime(currentOnlines onlines, stats []model.Stats) {
+	realtime.Publish(realtime.TopicOnlines, currentOnlines)
+	realtime.Publish(realtime.TopicTrafficDelta, trafficDeltas(stats))
+}
+
+func trafficDeltas(stats []model.Stats) []trafficDelta {
+	type key struct {
+		resource string
+		tag      string
+	}
+	byKey := map[key]*trafficDelta{}
+	order := make([]key, 0)
+	for _, stat := range stats {
+		k := key{resource: stat.Resource, tag: stat.Tag}
+		delta := byKey[k]
+		if delta == nil {
+			delta = &trafficDelta{Resource: stat.Resource, Tag: stat.Tag}
+			byKey[k] = delta
+			order = append(order, k)
+		}
+		if stat.Direction {
+			delta.Up += stat.Traffic
+		} else {
+			delta.Down += stat.Traffic
+		}
+	}
+	result := make([]trafficDelta, 0, len(order))
+	for _, k := range order {
+		result = append(result, *byKey[k])
+	}
+	return result
 }
 
 func (s *StatsService) GetStats(resource string, tag string, limit int) ([]model.Stats, error) {
@@ -154,7 +293,13 @@ func (s *StatsService) downsampleStats(stats []model.Stats, maxRows int) []model
 }
 
 func (s *StatsService) GetOnlines() (onlines, error) {
-	return *onlineResources, nil
+	onlineResourcesMu.RLock()
+	defer onlineResourcesMu.RUnlock()
+	return onlines{
+		Inbound:  append([]string(nil), onlineResources.Inbound...),
+		User:     append([]string(nil), onlineResources.User...),
+		Outbound: append([]string(nil), onlineResources.Outbound...),
+	}, nil
 }
 func (s *StatsService) DelOldStats(days int) error {
 	oldTime := time.Now().AddDate(0, 0, -(days)).Unix()

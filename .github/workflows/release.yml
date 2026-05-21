@@ -2,25 +2,22 @@ name: Release S-UI
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        default: "v1.5.3-beta"
+        type: string
   push:
-    branches:
-      - main
     tags:
-      - "*"
-    paths:
-      - '.github/workflows/release.yml'
-      - 'frontend/**'
-      - '**.sh'
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 's-ui.service'
+      - "v*"
+
+permissions:
+  contents: write
 
 env:
   NODE_VERSION: "25"
-  CRONET_GO_VERSION: "2faf34666c2cc8234f10f2ab6d4c4d6104d34ae2"
+  CRONET_GO_VERSION: "e4926ba205fae5351e3d3eeafff7e7029654424a"
   CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
@@ -28,17 +25,17 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository (frontend only)
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Build frontend
@@ -46,16 +43,16 @@ jobs:
           cd frontend
           npm install
           npm run build
-          cd ..
 
-      - name: Upload frontend dist
+      - name: Upload frontend build artifact
         uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist/
+          retention-days: 1
 
   build-linux:
-    name: build-${{ matrix.platform }}
+    name: Build-${{ matrix.platform }}
     needs: build-frontend
     strategy:
       fail-fast: false
@@ -70,23 +67,22 @@ jobs:
           - { platform: s390x, arch: s390x, bootlin: s390x-z13, naive: false }
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
 
-      - name: Download frontend dist
+      - name: Download frontend build artifact
         uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: web/html
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v6
         with:
           cache: false
           go-version-file: go.mod
 
-      # Naive platforms: use cronet toolchain only (no Bootlin).
-      - name: Clone cronet-go (cronet toolchain for naive)
+      - name: Clone cronet-go (naive platforms)
         if: matrix.naive
         run: |
           set -e
@@ -104,19 +100,7 @@ jobs:
           cd ~/cronet-go
           GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
 
-      - name: Cache Chromium toolchain
-        if: matrix.naive
-        id: cache-chromium-toolchain
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/cronet-go/naiveproxy/src/third_party/llvm-build/
-            ~/cronet-go/naiveproxy/src/gn/out/
-            ~/cronet-go/naiveproxy/src/chrome/build/pgo_profiles/
-            ~/cronet-go/naiveproxy/src/out/sysroot-build/
-          key: chromium-toolchain-${{ matrix.platform }}-musl-${{ env.CRONET_GO_VERSION }}
-
-      - name: Build cronet lib and set toolchain env (CC, CXX, CGO_LDFLAGS, PATH)
+      - name: Build cronet library and set toolchain environment
         if: matrix.naive
         run: |
           set -e
@@ -128,15 +112,14 @@ jobs:
             echo "$line" >> $GITHUB_ENV
           done
 
-      - name: Set Go build env (all platforms)
+      - name: Set Go build environment
         run: |
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "GOOS=linux" >> $GITHUB_ENV
           echo "GOARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           if [ -n "${{ matrix.goarm }}" ]; then echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV; fi
 
-      # Non-naive platforms only: Bootlin musl (armv5, s390x).
-      - name: Set up Bootlin musl (armv5, s390x)
+      - name: Set up Bootlin musl (non-naive platforms)
         if: ${{ matrix.naive != true }}
         run: |
           set -e
@@ -144,7 +127,7 @@ jobs:
           echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
           TARBALL_BASE="${{ env.BOOTLIN_BASE_URL }}/$BOOTLIN_ARCH/tarballs/"
           TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
-          [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
+          [ -z "$TARBALL_URL" ] && { echo "Bootlin musl toolchain not found for arch=$BOOTLIN_ARCH" >&2; exit 1; }
           echo "Downloading: $TARBALL_URL"
           cd /tmp
           curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
@@ -154,7 +137,7 @@ jobs:
           BIN_DIR="$TOOLCHAIN_DIR/bin"
           echo "PATH=$BIN_DIR:$PATH" >> $GITHUB_ENV
           CC=$(find "$BIN_DIR" -maxdepth 1 \( -name '*-gcc.br_real' -o -name '*-gcc' \) -type f -executable 2>/dev/null | grep -v g++ | head -n1)
-          [ -z "$CC" ] && { echo "No gcc found in $BIN_DIR" >&2; exit 1; }
+          [ -z "$CC" ] && { echo "gcc not found in $BIN_DIR" >&2; exit 1; }
           echo "CC=$(realpath "$CC")" >> $GITHUB_ENV
           SYSROOT=""
           F=$(find "$TOOLCHAIN_DIR" -name "libc-header-start.h" 2>/dev/null | head -1)
@@ -181,22 +164,65 @@ jobs:
       - name: Package
         run: tar -zcvf s-ui-linux-${{ matrix.platform }}.tar.gz s-ui
 
-      - name: Upload artifact
+      - name: Generate SHA256 checksum
+        run: sha256sum s-ui-linux-${{ matrix.platform }}.tar.gz > s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: s-ui-linux-${{ matrix.platform }}
-          path: ./s-ui-linux-${{ matrix.platform }}.tar.gz
-          retention-days: 30
+          path: |
+            ./s-ui-linux-${{ matrix.platform }}.tar.gz
+            ./s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+          retention-days: 1
 
-      - name: Upload to Release
-        uses: svenstaro/upload-release-action@v2
-        if: |
-          (github.event_name == 'release' && github.event.action == 'published') ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+  publish-linux:
+    name: Publish Linux artifacts
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository (for release notes)
+        uses: actions/checkout@v6.0.2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
-          file: s-ui-linux-${{ matrix.platform }}.tar.gz
-          asset_name: s-ui-linux-${{ matrix.platform }}.tar.gz
-          prerelease: true
-          overwrite: true
+          fetch-depth: 1
+
+      - name: Normalize release tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          case "$TAG" in
+            v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
+            *) TAG="v$TAG"; echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
+          esac
+          case "$TAG" in
+            *-alpha*|*-beta*|*-rc*|*-pre*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          NOTES_FILE=".github/RELEASE_NOTES_${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "notes_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes_path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: s-ui-linux-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish to current repository Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: s-ui ${{ steps.vars.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
+          body_path: ${{ steps.vars.outputs.notes_path }}
+          fail_on_unmatched_files: true
+          files: release-assets/*

@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/config"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/logger"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -22,7 +23,16 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type ServerService struct{}
+type ServerService struct {
+	Runtime *Runtime
+}
+
+func (s *ServerService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
 
 func (s *ServerService) GetStatus(request string) *map[string]interface{} {
 	status := make(map[string]interface{}, 0)
@@ -137,10 +147,13 @@ func (s *ServerService) GetNetInfo() map[string]interface{} {
 func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	var rtm runtime.MemStats
 	runtime.ReadMemStats(&rtm)
-	isRunning := corePtr.IsRunning()
+	coreInstance := s.runtime().Core()
+	isRunning := coreInstance != nil && coreInstance.IsRunning()
 	uptime := uint32(0)
 	if isRunning {
-		uptime = corePtr.GetInstance().Uptime()
+		if instance := coreInstance.GetInstance(); instance != nil {
+			uptime = instance.Uptime()
+		}
 	}
 	return map[string]interface{}{
 		"running": isRunning,
@@ -190,12 +203,84 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	return info
 }
 
+const (
+	defaultLogCount = 10
+	maxLogCount     = 500
+	maxLogFilter    = 64
+)
+
+type LogQuery struct {
+	Count  int
+	Level  string
+	Source string
+	Filter string
+}
+
 func (s *ServerService) GetLogs(count string, level string) []string {
-	c, err := strconv.Atoi(count)
+	logs, err := s.GetLogsFiltered(count, level, "", "")
 	if err != nil {
-		c = 10
+		return nil
 	}
-	return logger.GetLogs(c, level)
+	return logs
+}
+
+func (s *ServerService) GetLogsFiltered(count string, level string, source string, filter string) ([]string, error) {
+	query, err := ParseLogQuery(count, level, source, filter)
+	if err != nil {
+		return nil, err
+	}
+	return logger.GetLogsFiltered(query.Count, query.Level, query.Source, query.Filter), nil
+}
+
+func ParseLogQuery(count string, level string, source string, filter string) (LogQuery, error) {
+	parsedCount := defaultLogCount
+	if count != "" {
+		c, err := strconv.Atoi(count)
+		if err != nil || c <= 0 {
+			return LogQuery{}, common.NewError("invalid log count")
+		}
+		if c > maxLogCount {
+			c = maxLogCount
+		}
+		parsedCount = c
+	}
+	if level == "" {
+		level = "debug"
+	}
+	level = strings.ToLower(level)
+	if !isValidLogLevel(level) {
+		return LogQuery{}, common.NewError("invalid log level")
+	}
+	if source != "" && source != "panel" && source != "core" {
+		return LogQuery{}, common.NewError("invalid log source")
+	}
+	if len(filter) > maxLogFilter || containsControlRune(filter) {
+		return LogQuery{}, common.NewError("invalid log filter")
+	}
+	return LogQuery{
+		Count:  parsedCount,
+		Level:  level,
+		Source: source,
+		Filter: filter,
+	}, nil
+}
+
+func isValidLogLevel(level string) bool {
+	switch strings.ToLower(level) {
+	case "debug", "info", "notice", "warning", "error", "critical":
+		return true
+	default:
+		return false
+	}
+}
+
+func containsControlRune(value string) bool {
+	for _, r := range value {
+		if r == 0 || r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *ServerService) GenKeypair(keyType string, options string) []string {

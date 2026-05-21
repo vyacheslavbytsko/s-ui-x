@@ -6,16 +6,49 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util"
-	"github.com/alireza0/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/gorm"
 )
 
-type ClientService struct{}
+const clientTrafficOverLimitCondition = "volume > 0 AND (up > volume OR down > volume OR up > volume - down)"
+
+type ClientService struct {
+	Runtime *Runtime
+}
+
+func (s *ClientService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
+
+func (s *ClientService) setLastUpdate(value int64) {
+	s.runtime().updates().Set(value)
+}
+
+func decodeClientInbounds(clientID uint, raw json.RawMessage, operation string) ([]uint, bool) {
+	var inbounds []uint
+	if err := json.Unmarshal(raw, &inbounds); err != nil {
+		logger.Warningf("%s skipped client %d with invalid inbounds: %v", operation, clientID, err)
+		return nil, false
+	}
+	return inbounds, true
+}
+
+func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]map[string]string, bool) {
+	var links []map[string]string
+	if err := json.Unmarshal(raw, &links); err != nil {
+		logger.Warningf("%s skipped client %d with invalid links: %v", operation, clientID, err)
+		return nil, false
+	}
+	return links, true
+}
 
 func (s *ClientService) Get(id string) (*[]model.Client, error) {
 	if id == "" {
@@ -39,7 +72,7 @@ func (s *ClientService) GetAll() (*[]model.Client, error) {
 	db := database.GetDB()
 	var clients []model.Client
 	err := db.Model(model.Client{}).
-		Select("`id`, `enable`, `name`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`").
+		Select("`id`, `enable`, `name`, `sub_secret`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`, `limit_ip`, `ip_limit_mode`, `last_online`, `last_ip_count`").
 		Scan(&clients).Error
 	if err != nil {
 		return nil, err
@@ -55,6 +88,10 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	case "new", "edit":
 		var client model.Client
 		err = json.Unmarshal(data, &client)
+		if err != nil {
+			return nil, err
+		}
+		err = s.prepareClientSubSecret(tx, &client, act == "edit")
 		if err != nil {
 			return nil, err
 		}
@@ -88,11 +125,17 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		for _, client := range clients {
+			err = s.prepareClientSubSecret(tx, client, false)
+			if err != nil {
+				return nil, err
+			}
+		}
 		err = s.updateLinksWithFixedInbounds(tx, clients, hostname)
 		if err != nil {
 			return nil, err
 		}
-		err = tx.Save(clients).Error
+		err = database.SaveInBatchesSafe(tx, clients)
 		if err != nil {
 			return nil, err
 		}
@@ -103,6 +146,10 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			return nil, err
 		}
 		for _, client := range clients {
+			err = s.prepareClientSubSecret(tx, client, true)
+			if err != nil {
+				return nil, err
+			}
 			changedInboundIds, err := s.findInboundsChanges(tx, client, true)
 			if err != nil {
 				return nil, err
@@ -117,7 +164,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 				return nil, err
 			}
 		}
-		err = tx.Save(clients).Error
+		err = database.SaveInBatchesSafe(tx, clients)
 		if err != nil {
 			return nil, err
 		}
@@ -235,16 +282,21 @@ func (s *ClientService) UpdateClientsOnInboundAdd(tx *gorm.DB, initIds string, i
 	}
 	for _, client := range clients {
 		// Add inbounds
-		var clientInbounds []uint
-		json.Unmarshal(client.Inbounds, &clientInbounds)
+		clientInbounds, ok := decodeClientInbounds(client.Id, client.Inbounds, "inbound add")
+		if !ok {
+			continue
+		}
 		clientInbounds = append(clientInbounds, inboundId)
 		client.Inbounds, err = json.MarshalIndent(clientInbounds, "", "  ")
 		if err != nil {
 			return err
 		}
 		// Add links
-		var clientLinks, newClientLinks []map[string]string
-		json.Unmarshal(client.Links, &clientLinks)
+		clientLinks, ok := decodeClientLinks(client.Id, client.Links, "inbound add")
+		if !ok {
+			continue
+		}
+		var newClientLinks []map[string]string
 		newLinks := util.LinkGenerator(client.Config, &inbound, hostname)
 		for _, newLink := range newLinks {
 			newClientLinks = append(newClientLinks, map[string]string{
@@ -287,8 +339,11 @@ func (s *ClientService) UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag s
 	}
 	for _, client := range clients {
 		// Delete inbounds
-		var clientInbounds, newClientInbounds []uint
-		json.Unmarshal(client.Inbounds, &clientInbounds)
+		clientInbounds, ok := decodeClientInbounds(client.Id, client.Inbounds, "inbound delete")
+		if !ok {
+			continue
+		}
+		var newClientInbounds []uint
 		for _, clientInbound := range clientInbounds {
 			if clientInbound != id {
 				newClientInbounds = append(newClientInbounds, clientInbound)
@@ -299,8 +354,11 @@ func (s *ClientService) UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag s
 			return err
 		}
 		// Delete links
-		var clientLinks, newClientLinks []map[string]string
-		json.Unmarshal(client.Links, &clientLinks)
+		clientLinks, ok := decodeClientLinks(client.Id, client.Links, "inbound delete")
+		if !ok {
+			continue
+		}
+		var newClientLinks []map[string]string
 		for _, clientLink := range clientLinks {
 			if clientLink["remark"] != tag {
 				newClientLinks = append(newClientLinks, clientLink)
@@ -335,8 +393,11 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 			return err
 		}
 		for _, client := range clients {
-			var clientLinks, newClientLinks []map[string]string
-			json.Unmarshal(client.Links, &clientLinks)
+			clientLinks, ok := decodeClientLinks(client.Id, client.Links, "inbound link update")
+			if !ok {
+				continue
+			}
+			var newClientLinks []map[string]string
 			newLinks := util.LinkGenerator(client.Config, &inbound, hostname)
 			for _, newLink := range newLinks {
 				newClientLinks = append(newClientLinks, map[string]string{
@@ -364,12 +425,10 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 	return nil
 }
 
-func (s *ClientService) DepleteClients() ([]uint, error) {
-	var err error
+func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 	var clients []model.Client
 	var changes []model.Changes
 	var users []string
-	var inboundIds []uint
 
 	dt := time.Now().Unix()
 	db := database.GetDB()
@@ -377,7 +436,10 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
-			tx.Commit()
+			err = tx.Commit().Error
+			if err != nil {
+				return
+			}
 			if err1 := db.Exec("PRAGMA wal_checkpoint(FULL)").Error; err1 != nil {
 				logger.Error("Error checkpointing WAL: ", err1.Error())
 			}
@@ -393,7 +455,7 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	}
 
 	// Deplete clients
-	err = tx.Model(model.Client{}).Where("enable = true AND ((volume >0 AND up+down > volume) OR (expiry > 0 AND expiry < ?))", dt).Scan(&clients).Error
+	err = tx.Model(model.Client{}).Where("enable = true AND (("+clientTrafficOverLimitCondition+") OR (expiry > 0 AND expiry < ?))", dt).Scan(&clients).Error
 	if err != nil {
 		return nil, err
 	}
@@ -401,8 +463,10 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	for _, client := range clients {
 		logger.Debug("Client ", client.Name, " is going to be disabled")
 		users = append(users, client.Name)
-		var userInbounds []uint
-		json.Unmarshal(client.Inbounds, &userInbounds)
+		userInbounds, ok := decodeClientInbounds(client.Id, client.Inbounds, "client deplete")
+		if !ok {
+			continue
+		}
 		// Find changed inbounds
 		inboundIds = common.UnionUintArray(inboundIds, userInbounds)
 		changes = append(changes, model.Changes{
@@ -416,15 +480,15 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 
 	// Save changes
 	if len(changes) > 0 {
-		err = tx.Model(model.Client{}).Where("enable = true AND ((volume >0 AND up+down > volume) OR (expiry > 0 AND expiry < ?))", dt).Update("enable", false).Error
+		err = tx.Model(model.Client{}).Where("enable = true AND (("+clientTrafficOverLimitCondition+") OR (expiry > 0 AND expiry < ?))", dt).Update("enable", false).Error
 		if err != nil {
 			return nil, err
 		}
-		err = tx.Model(model.Changes{}).Create(&changes).Error
+		err = database.CreateInBatchesSafe(tx.Model(model.Changes{}), &changes)
 		if err != nil {
 			return nil, err
 		}
-		LastUpdate = dt
+		s.setLastUpdate(dt)
 	}
 
 	return inboundIds, nil
@@ -432,18 +496,24 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 
 func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	var err error
-	var resetClients, allClients []*model.Client
+	var resetClients []*model.Client
 	var changes []model.Changes
 	var inboundIds []uint
 	// Set delay start without periodic reset
 	err = tx.Model(model.Client{}).
-		Where("enable = true AND delay_start = true AND auto_reset = false AND (Up + Down) > 0").Find(&resetClients).Error
+		Where("enable = true AND delay_start = true AND auto_reset = false AND (up > 0 OR down > 0)").Find(&resetClients).Error
 	if err != nil {
 		return nil, err
 	}
 	for _, client := range resetClients {
 		client.Expiry = dt + (int64(client.ResetDays) * 86400)
 		client.DelayStart = false
+		if err := updateClientResetFields(tx, client.Id, map[string]interface{}{
+			"expiry":      client.Expiry,
+			"delay_start": client.DelayStart,
+		}); err != nil {
+			return nil, err
+		}
 		changes = append(changes, model.Changes{
 			DateTime: dt,
 			Actor:    "ResetJob",
@@ -452,17 +522,23 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			Obj:      json.RawMessage("\"" + client.Name + "\""),
 		})
 	}
-	allClients = append(allClients, resetClients...)
 
 	// Set delay start with periodic reset
+	resetClients = nil
 	err = tx.Model(model.Client{}).
-		Where("enable = true AND delay_start = true AND auto_reset = true AND (Up + Down) > 0").Find(&resetClients).Error
+		Where("enable = true AND delay_start = true AND auto_reset = true AND (up > 0 OR down > 0)").Find(&resetClients).Error
 	if err != nil {
 		return nil, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
 		client.DelayStart = false
+		if err := updateClientResetFields(tx, client.Id, map[string]interface{}{
+			"next_reset":  client.NextReset,
+			"delay_start": client.DelayStart,
+		}); err != nil {
+			return nil, err
+		}
 		changes = append(changes, model.Changes{
 			DateTime: dt,
 			Actor:    "ResetJob",
@@ -471,15 +547,22 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			Obj:      json.RawMessage("\"" + client.Name + "\""),
 		})
 	}
-	allClients = append(allClients, resetClients...)
 
 	// Set periodic reset
+	resetClients = nil
 	err = tx.Model(model.Client{}).
 		Where("delay_start = false AND auto_reset = true AND next_reset < ?", dt).Find(&resetClients).Error
 	if err != nil {
 		return nil, err
 	}
 	for _, client := range resetClients {
+		if !client.Enable {
+			clientInboundIds, ok := decodeClientInbounds(client.Id, client.Inbounds, "client reset")
+			if !ok {
+				continue
+			}
+			inboundIds = common.UnionUintArray(inboundIds, clientInboundIds)
+		}
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
 		client.TotalUp += client.Up
 		client.TotalDown += client.Down
@@ -487,30 +570,32 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 		client.Down = 0
 		if !client.Enable {
 			client.Enable = true
-			var clientInboundIds []uint
-			json.Unmarshal(client.Inbounds, &clientInboundIds)
-			inboundIds = common.UnionUintArray(inboundIds, clientInboundIds)
 		}
-	}
-	allClients = append(allClients, resetClients...)
-
-	// Save clients
-	if len(allClients) > 0 {
-		err = tx.Save(allClients).Error
-		if err != nil {
+		if err := updateClientResetFields(tx, client.Id, map[string]interface{}{
+			"next_reset": client.NextReset,
+			"total_up":   client.TotalUp,
+			"total_down": client.TotalDown,
+			"up":         client.Up,
+			"down":       client.Down,
+			"enable":     client.Enable,
+		}); err != nil {
 			return nil, err
 		}
 	}
 
 	// Save changes
 	if len(changes) > 0 {
-		err = tx.Model(model.Changes{}).Create(&changes).Error
+		err = database.CreateInBatchesSafe(tx.Model(model.Changes{}), &changes)
 		if err != nil {
 			return nil, err
 		}
-		LastUpdate = dt
+		s.setLastUpdate(dt)
 	}
 	return inboundIds, nil
+}
+
+func updateClientResetFields(tx *gorm.DB, clientID uint, values map[string]interface{}) error {
+	return tx.Model(model.Client{}).Where("id = ?", clientID).Updates(values).Error
 }
 
 func (s *ClientService) findInboundsChanges(tx *gorm.DB, client *model.Client, fillOmitted bool) ([]uint, error) {

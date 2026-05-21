@@ -1,25 +1,18 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
-	"sync"
 	"time"
 
-	"github.com/alireza0/s-ui/core"
-	"github.com/alireza0/s-ui/database"
-	"github.com/alireza0/s-ui/database/model"
-	"github.com/alireza0/s-ui/logger"
-	"github.com/alireza0/s-ui/util/common"
-)
-
-var (
-	LastUpdate          int64
-	corePtr             *core.Core
-	startCoreMu         sync.Mutex
-	startCoreInProgress bool
-	lastStartFailTime   time.Time
-	startCooldown       = 15 * time.Second
+	"github.com/deposist/s-ui-rus-inst/core"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/realtime"
+	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/redact"
 )
 
 type ConfigService struct {
@@ -30,6 +23,7 @@ type ConfigService struct {
 	OutboundService
 	ServicesService
 	EndpointService
+	Runtime *Runtime
 }
 
 type SingBoxConfig struct {
@@ -45,8 +39,23 @@ type SingBoxConfig struct {
 }
 
 func NewConfigService(core *core.Core) *ConfigService {
-	corePtr = core
-	return &ConfigService{}
+	runtime := NewRuntime(core)
+	SetDefaultRuntime(runtime)
+	return NewConfigServiceWithRuntime(runtime)
+}
+
+func NewConfigServiceWithRuntime(runtime *Runtime) *ConfigService {
+	runtime = runtimeOrDefault(runtime)
+	return &ConfigService{
+		ClientService:   ClientService{Runtime: runtime},
+		TlsService:      TlsService{Runtime: runtime, InboundService: InboundService{Runtime: runtime, ClientService: ClientService{Runtime: runtime}}, ServicesService: ServicesService{Runtime: runtime}},
+		SettingService:  SettingService{},
+		InboundService:  InboundService{Runtime: runtime, ClientService: ClientService{Runtime: runtime}},
+		OutboundService: OutboundService{},
+		ServicesService: ServicesService{Runtime: runtime},
+		EndpointService: EndpointService{},
+		Runtime:         runtime,
+	}
 }
 
 func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
@@ -86,88 +95,80 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 	return &rawConfig, nil
 }
 
-func (s *ConfigService) StartCore() error {
-	if corePtr.IsRunning() {
+// startCore starts sing-box. When force is true, the cool-down between failed
+// starts is bypassed, which is required for user-initiated restarts so the API
+// reflects the real start status instead of silently succeeding.
+func (s *ConfigService) startCore(force bool) error {
+	manager := s.runtime().restart()
+	if manager == nil {
+		return common.NewError("restart manager not initialized")
+	}
+	return manager.run(func() error {
+		return s.startCoreLocked(force)
+	})
+}
+
+func (s *ConfigService) startCoreLocked(force bool) error {
+	coreInstance := s.coreInstance()
+	if coreInstance == nil {
+		return common.NewError("core not initialized")
+	}
+	if coreInstance.IsRunning() {
 		return nil
 	}
-	startCoreMu.Lock()
-	if startCoreInProgress {
-		startCoreMu.Unlock()
+	runtime := s.runtime()
+	if !force && runtime.startCooldownActive() {
+		logger.Info("start core cooldown ", runtime.coreStartCooldownDuration()/time.Second, " seconds")
 		return nil
 	}
-	if time.Since(lastStartFailTime) < startCooldown {
-		logger.Info("start core cooldown ", startCooldown/time.Second, " seconds")
-		startCoreMu.Unlock()
-		return nil
-	}
-	startCoreInProgress = true
-	startCoreMu.Unlock()
-	defer func() {
-		startCoreMu.Lock()
-		startCoreInProgress = false
-		startCoreMu.Unlock()
-	}()
 
 	logger.Info("starting core")
 	rawConfig, err := s.GetConfig("")
 	if err != nil {
 		return err
 	}
-	err = corePtr.Start(*rawConfig)
+	err = coreInstance.Start(*rawConfig)
 	if err != nil {
-		startCoreMu.Lock()
-		lastStartFailTime = time.Now()
-		startCoreMu.Unlock()
+		runtime.markCoreStartFailed()
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
+	runtime.markCoreStartSucceeded()
 	logger.Info("sing-box started")
 	return nil
 }
 
-func (s *ConfigService) RestartCore() error {
-	err := s.StopCore()
-	if err != nil {
-		return err
-	}
-	return s.StartCore()
+// StartCore is the cron-friendly variant: it respects the cooldown so a
+// failing core does not get hammered every 5 seconds.
+func (s *ConfigService) StartCore() error {
+	return s.startCore(false)
 }
 
-func (s *ConfigService) restartCoreWithConfig(config json.RawMessage) error {
-	startCoreMu.Lock()
-	if startCoreInProgress {
-		startCoreMu.Unlock()
-		return nil
+// RestartCore is invoked from user actions; it bypasses the cooldown so the
+// caller observes the true start status.
+func (s *ConfigService) RestartCore() error {
+	manager := s.runtime().restart()
+	if manager == nil {
+		return common.NewError("restart manager not initialized")
 	}
-	startCoreInProgress = true
-	startCoreMu.Unlock()
-	defer func() {
-		startCoreMu.Lock()
-		startCoreInProgress = false
-		startCoreMu.Unlock()
-	}()
-
-	if corePtr.IsRunning() {
-		if err := corePtr.Stop(); err != nil {
-			logger.Error("restart sing-box err (stop):", err.Error())
+	return manager.run(func() error {
+		coreInstance := s.coreInstance()
+		if coreInstance == nil {
+			return common.NewError("core not initialized")
+		}
+		if err := s.StopCore(); err != nil {
 			return err
 		}
-	}
-	rawConfig, err := s.GetConfig(string(config))
-	if err != nil {
-		logger.Error("restart sing-box err (get config):", err.Error())
-		return err
-	}
-	if err := corePtr.Start(*rawConfig); err != nil {
-		logger.Error("restart sing-box err (start):", err.Error())
-		return err
-	}
-	logger.Info("sing-box restarted with new config")
-	return nil
+		return s.startCoreLocked(true)
+	})
 }
 
 func (s *ConfigService) StopCore() error {
-	err := corePtr.Stop()
+	coreInstance := s.coreInstance()
+	if coreInstance == nil {
+		return common.NewError("core not initialized")
+	}
+	err := coreInstance.Stop()
 	if err != nil {
 		return err
 	}
@@ -175,28 +176,71 @@ func (s *ConfigService) StopCore() error {
 	return nil
 }
 
+func (s *ConfigService) IsCoreRunning() bool {
+	coreInstance := s.coreInstance()
+	return coreInstance != nil && coreInstance.IsRunning()
+}
+
 func (s *ConfigService) CheckOutbound(tag string, link string) core.CheckOutboundResult {
 	if tag == "" {
 		return core.CheckOutboundResult{Error: "missing query parameter: tag"}
 	}
-	if corePtr == nil || !corePtr.IsRunning() {
+	coreInstance := s.coreInstance()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return core.CheckOutboundResult{Error: "core not running"}
 	}
-	return core.CheckOutbound(corePtr.GetCtx(), tag, link)
+	return coreInstance.CheckOutbound(coreInstance.GetCtx(), tag, link)
 }
 
-func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) ([]string, error) {
-	var err error
-	var objs []string = []string{obj}
+func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) core.CheckOutboundResult {
+	if tag == "" {
+		return core.CheckOutboundResult{Error: "missing query parameter: tag"}
+	}
+	coreInstance := s.coreInstance()
+	if coreInstance == nil || !coreInstance.IsRunning() {
+		return core.CheckOutboundResult{Error: "core not running"}
+	}
+	return coreInstance.CheckOutbound(ctx, tag, link)
+}
+
+func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {
+	objs = []string{obj}
+	needsCoreRestart := false
+	auditTelegramBackupPassphrase, auditTelegramBackupPassphraseConfigured, err := s.telegramBackupPassphraseAuditState(obj, data)
+	if err != nil {
+		return nil, err
+	}
 
 	db := database.GetDB()
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
-			tx.Commit()
-			// Try to start core if it is not running
-			if !corePtr.IsRunning() {
-				s.StartCore()
+			if commitErr := tx.Commit().Error; commitErr != nil {
+				err = commitErr
+				return
+			}
+			if auditTelegramBackupPassphrase {
+				s.SettingService.recordTelegramBackupPassphraseChanged(loginUser, auditTelegramBackupPassphraseConfigured)
+			}
+			realtime.Publish(realtime.TopicConfigInvalidated, nil)
+			coreInstance := s.coreInstance()
+			if coreInstance == nil {
+				return
+			}
+			if needsCoreRestart {
+				if coreInstance.IsRunning() {
+					if restartErr := s.RestartCore(); restartErr != nil {
+						logger.Warning("sing-box restart after save failed: ", restartErr)
+					}
+				} else {
+					if startErr := s.startCore(true); startErr != nil {
+						logger.Warning("sing-box start after save failed: ", startErr)
+					}
+				}
+			} else if !coreInstance.IsRunning() {
+				if startErr := s.startCore(true); startErr != nil {
+					logger.Warning("sing-box start after save failed: ", startErr)
+				}
 			}
 		} else {
 			tx.Rollback()
@@ -209,31 +253,31 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		inboundIds, err = s.ClientService.Save(tx, act, data, hostname)
 		if err == nil && len(inboundIds) > 0 {
 			objs = append(objs, "inbounds")
-			err = s.InboundService.RestartInbounds(tx, inboundIds)
-			if err != nil {
-				return nil, common.NewErrorf("failed to update users for inbounds: %v", err)
-			}
+			needsCoreRestart = true
 		}
 	case "tls":
 		err = s.TlsService.Save(tx, act, data, hostname)
 		objs = append(objs, "clients", "inbounds")
+		needsCoreRestart = true
 	case "inbounds":
 		err = s.InboundService.Save(tx, act, data, initUsers, hostname)
 		objs = append(objs, "clients")
+		needsCoreRestart = true
 	case "outbounds":
 		err = s.OutboundService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "services":
 		err = s.ServicesService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "endpoints":
 		err = s.EndpointService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "config":
 		err = s.SettingService.SaveConfig(tx, data)
 		if err != nil {
 			return nil, err
 		}
-		configData := make(json.RawMessage, len(data))
-		copy(configData, data)
-		go func() { _ = s.restartCoreWithConfig(configData) }()
+		needsCoreRestart = true
 	case "settings":
 		err = s.SettingService.Save(tx, data)
 	default:
@@ -249,49 +293,124 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		Actor:    loginUser,
 		Key:      obj,
 		Action:   act,
-		Obj:      data,
+		Obj:      redactChangePayload(data),
 	}).Error
 	if err != nil {
 		return nil, err
 	}
 
-	LastUpdate = time.Now().Unix()
+	s.setLastUpdate(time.Now().Unix())
 
 	return objs, nil
+}
+
+func (s *ConfigService) coreInstance() *core.Core {
+	if s == nil {
+		return DefaultRuntime().Core()
+	}
+	return s.runtime().Core()
+}
+
+func (s *ConfigService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
+
+func (s *ConfigService) telegramBackupPassphraseAuditState(obj string, data json.RawMessage) (bool, bool, error) {
+	if obj != "settings" {
+		return false, false, nil
+	}
+	var settings map[string]string
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return false, false, err
+	}
+	newPassphrase, ok := settings["telegramBackupPassphrase"]
+	if !ok || newPassphrase == StoredSecretMarker {
+		return false, false, nil
+	}
+	oldPassphrase, err := s.SettingService.GetTelegramBackupPassphraseBytes()
+	if err != nil {
+		return false, false, err
+	}
+	defer zeroBytes(oldPassphrase)
+	if string(oldPassphrase) == newPassphrase {
+		return false, false, nil
+	}
+	return true, newPassphrase != "", nil
+}
+
+func redactChangePayload(data json.RawMessage) json.RawMessage {
+	var payload any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		encoded, marshalErr := json.Marshal(redact.String(string(data)))
+		if marshalErr != nil {
+			return json.RawMessage(`"[REDACTED]"`)
+		}
+		return encoded
+	}
+	encoded, err := json.Marshal(redact.Value(payload))
+	if err != nil {
+		return json.RawMessage(`"[REDACTED]"`)
+	}
+	return encoded
 }
 
 func (s *ConfigService) CheckChanges(lu string) (bool, error) {
 	if lu == "" {
 		return true, nil
 	}
-	if LastUpdate == 0 {
+	lastUpdate := s.getLastUpdate()
+	if lastUpdate == 0 {
 		db := database.GetDB()
 		var count int64
-		err := db.Model(model.Changes{}).Where("date_time > " + lu).Count(&count).Error
+		intLu, err := strconv.ParseInt(lu, 10, 64)
+		if err != nil {
+			return false, err
+		}
+		err = db.Model(model.Changes{}).Where("date_time > ?", intLu).Count(&count).Error
 		if err == nil {
-			LastUpdate = time.Now().Unix()
+			s.setLastUpdate(time.Now().Unix())
 		}
 		return count > 0, err
-	} else {
-		intLu, err := strconv.ParseInt(lu, 10, 64)
-		return LastUpdate > intLu, err
 	}
+	intLu, err := strconv.ParseInt(lu, 10, 64)
+	return lastUpdate > intLu, err
 }
 
 func (s *ConfigService) GetChanges(actor string, chngKey string, count string) []model.Changes {
 	c, _ := strconv.Atoi(count)
-	whereString := "`id`>0"
+	if c <= 0 || c > 200 {
+		c = 20
+	}
+	db := database.GetDB().Model(model.Changes{})
 	if len(actor) > 0 {
-		whereString += " and `actor`='" + actor + "'"
+		db = db.Where("actor = ?", actor)
 	}
 	if len(chngKey) > 0 {
-		whereString += " and `key`='" + chngKey + "'"
+		db = db.Where("key = ?", chngKey)
 	}
-	db := database.GetDB()
 	var chngs []model.Changes
-	err := db.Model(model.Changes{}).Where(whereString).Order("`id` desc").Limit(c).Scan(&chngs).Error
+	err := db.Order("id desc").Limit(c).Scan(&chngs).Error
 	if err != nil {
 		logger.Warning(err)
 	}
 	return chngs
+}
+
+func setLastUpdate(value int64) {
+	DefaultRuntime().updates().Set(value)
+}
+
+func getLastUpdate() int64 {
+	return DefaultRuntime().updates().Get()
+}
+
+func (s *ConfigService) setLastUpdate(value int64) {
+	s.runtime().updates().Set(value)
+}
+
+func (s *ConfigService) getLastUpdate() int64 {
+	return s.runtime().updates().Get()
 }
