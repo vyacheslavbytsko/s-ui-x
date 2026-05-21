@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/util/secretbox"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/util/secretbox"
 	"gorm.io/gorm"
 )
 

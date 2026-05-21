@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/importxui"
-	xfile "github.com/deposist/s-ui-rus-inst/database/importxui/source/file"
-	xssh "github.com/deposist/s-ui-rus-inst/database/importxui/source/ssh"
-	"github.com/deposist/s-ui-rus-inst/database/importxui/source/xuihttp"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/importxui"
+	xfile "github.com/deposist/s-ui-x/database/importxui/source/file"
+	xssh "github.com/deposist/s-ui-x/database/importxui/source/ssh"
+	"github.com/deposist/s-ui-x/database/importxui/source/xuihttp"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 )
 
 const xuiSyncMinInterval = 10 * time.Minute

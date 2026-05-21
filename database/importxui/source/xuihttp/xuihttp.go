@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database/importxui"
+	"github.com/deposist/s-ui-x/database/importxui"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

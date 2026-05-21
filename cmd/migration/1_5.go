@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
 )

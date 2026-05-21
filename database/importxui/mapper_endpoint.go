@@ -3,7 +3,7 @@ package importxui
 import (
 	"fmt"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/database/model"
 )
 
 type xuiWireguardSettings struct {

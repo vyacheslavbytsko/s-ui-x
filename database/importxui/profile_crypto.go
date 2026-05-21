@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
 	"golang.org/x/crypto/hkdf"
 	"gorm.io/gorm"
 )

@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"

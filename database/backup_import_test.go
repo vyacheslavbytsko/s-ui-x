@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

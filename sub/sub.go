@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/middleware"
-	"github.com/deposist/s-ui-rus-inst/network"
-	"github.com/deposist/s-ui-rus-inst/service"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/middleware"
+	"github.com/deposist/s-ui-x/network"
+	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"github.com/gin-gonic/gin"
 )

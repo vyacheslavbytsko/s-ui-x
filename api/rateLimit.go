@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 )
 
 const (

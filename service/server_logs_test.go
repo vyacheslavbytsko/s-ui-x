@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-x/logger"
 )
 
 func TestGetLogsFilteredValidatesAndFilters(t *testing.T) {

@@ -3,7 +3,7 @@ package util
 import (
 	"strings"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 	"golang.org/x/net/idna"
 )
 

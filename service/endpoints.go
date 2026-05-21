@@ -3,9 +3,9 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"gorm.io/gorm"
 )

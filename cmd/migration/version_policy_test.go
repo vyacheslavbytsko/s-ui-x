@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-x/config"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

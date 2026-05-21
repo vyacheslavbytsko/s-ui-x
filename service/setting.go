@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/realtime"
-	"github.com/deposist/s-ui-rus-inst/util"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/realtime"
+	"github.com/deposist/s-ui-x/util"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"gorm.io/gorm"
 )

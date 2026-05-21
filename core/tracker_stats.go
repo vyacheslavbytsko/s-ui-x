@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/ipmonitor"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/ipmonitor"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/atomic"

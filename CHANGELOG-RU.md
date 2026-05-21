@@ -596,9 +596,9 @@
 
 ### Репозиторий
 
-- Go-модуль переименован в `github.com/deposist/s-ui-rus-inst`.
+- Go-модуль переименован в `github.com/deposist/s-ui-x`.
 - Установка/релизы и docker-образ ссылаются на
-  `deposist/s-ui-rus-inst` / `ghcr.io/deposist/s-ui-rus-inst`.
+  `deposist/s-ui-x` / `ghcr.io/deposist/s-ui-x`.
 
 ## Гайд по обновлению (русский)
 
@@ -619,7 +619,7 @@ API-токены остаются на месте, а пароль админа 
 2. Остановите сервис: `systemctl stop s-ui`.
 3. Замените бинарник или docker-образ на новую сборку:
    - вручную: распакуйте свежий архив в `/usr/local/s-ui/`;
-   - docker: поменяйте тег образа на `ghcr.io/deposist/s-ui-rus-inst`
+   - docker: поменяйте тег образа на `ghcr.io/deposist/s-ui-x`
      и выполните `docker compose pull && docker compose up -d`.
 4. Запустите сервис: `systemctl start s-ui`.
 5. Зайдите в панель так же, как раньше. Пароль будет автоматически
@@ -637,7 +637,7 @@ API-токены остаются на месте, а пароль админа 
   (`http://127.0.0.1:…/sub`), выставьте `SUI_ALLOW_PRIVATE_SUB_URLS=true`.
 - Если вы устанавливали панель старым скриптом (`deposist/s-ui`),
   один раз обновите его на новый репозиторий:
-  `wget -O /usr/bin/s-ui https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/s-ui.sh && chmod +x /usr/bin/s-ui`.
+  `wget -O /usr/bin/s-ui https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh && chmod +x /usr/bin/s-ui`.
 - Лимит входа — 5 неуспешных попыток с одного IP за 15 минут блокируют
   IP на 15 минут. Если вы вводили пароль с ошибками много раз, подождите
   блок-окно или перезапустите сервис, чтобы счётчик сбросился.

@@ -3,8 +3,8 @@ package cronjob
 import (
 	"sync"
 
-	"github.com/deposist/s-ui-rus-inst/realtime"
-	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-x/realtime"
+	"github.com/deposist/s-ui-x/service"
 )
 
 type CheckCoreJob struct {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deposist/s-ui-rus-inst/database/importxui"
+	"github.com/deposist/s-ui-x/database/importxui"
 )
 
 type Source struct {

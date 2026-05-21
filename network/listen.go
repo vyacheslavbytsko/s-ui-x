@@ -3,7 +3,7 @@ package network
 import (
 	"net"
 
-	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-x/logger"
 )
 
 type ListenResult struct {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database/model"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

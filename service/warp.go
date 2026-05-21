@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -156,11 +156,11 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	hostName, _ := os.Hostname()
 
 	dataBytes, err := json.Marshal(map[string]string{
-		"key":   publicKey,
-		"tos":   tos,
-		"type":  "PC",
-		"model": "s-ui",
-		"name":  hostName,
+		"key":    publicKey,
+		"tos":    tos,
+		"type":   "PC",
+		"model":  "s-ui",
+		"name":   hostName,
 		"locale": "en_US",
 	})
 	if err != nil {

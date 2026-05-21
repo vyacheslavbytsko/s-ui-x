@@ -1,10 +1,10 @@
 package sub
 
 import (
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/service"
-	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util"
 
 	"github.com/gin-gonic/gin"
 )

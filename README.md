@@ -1,18 +1,18 @@
 ## S-UI
 
 <p align="center">
-  <img width="492" height="450" alt="s-ui-rus-inst logo" src="https://github.com/user-attachments/assets/cfc9da97-f8ea-4c68-961c-2bf164932272" />
+  <img width="492" height="450" alt="s-ui-x logo" src="https://github.com/user-attachments/assets/cfc9da97-f8ea-4c68-961c-2bf164932272" />
 </p>
 <p align="center">
-  <a href="https://github.com/deposist/s-ui-rus-inst/releases/latest">
-    <img src="https://img.shields.io/github/v/release/deposist/s-ui-rus-inst?style=for-the-badge&label=release" alt="Release">
+  <a href="https://github.com/deposist/s-ui-x/releases/latest">
+    <img src="https://img.shields.io/github/v/release/deposist/s-ui-x?style=for-the-badge&label=release" alt="Release">
   </a>
-  <a href="https://github.com/deposist/s-ui-rus-inst/releases">
-  <a href="https://github.com/deposist/s-ui-rus-inst/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/deposist/s-ui-rus-inst?style=for-the-badge" alt="License">
+  <a href="https://github.com/deposist/s-ui-x/releases">
+  <a href="https://github.com/deposist/s-ui-x/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/deposist/s-ui-x?style=for-the-badge" alt="License">
   </a>
-  <a href="https://github.com/deposist/s-ui-rus-inst/stargazers">
-    <img src="https://img.shields.io/github/stars/deposist/s-ui-rus-inst?style=for-the-badge" alt="Stars">
+  <a href="https://github.com/deposist/s-ui-x/stargazers">
+    <img src="https://img.shields.io/github/stars/deposist/s-ui-x?style=for-the-badge" alt="Stars">
   </a>
 </p>
 
@@ -45,7 +45,7 @@ Short summary of recent versions:
 | `1.5.1-beta` | Remediation hardening: async Telegram queue, redacted payloads, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram proxy egress with normalized error classes, bucketed observability, frontend completion. |
 | `1.5.0` | Security foundation and realtime platform: secretbox for sensitive settings, `audit_events` + `/api/security/audit`, CSRF for browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` header deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only by default). |
 | `1.4.3` | sing-box runtime update from `v1.13.4` to `v1.13.11`. No DB or UI changes. |
-| `1.4.2-beta` | Security and reliability hardening: bcrypt password storage with lazy migration, login rate limiter, hardened cookies, SSRF-resistant subscription fetcher, parameterized SQL, race-free runtime, automatic legacy backup adaptation, bilingual installer. Module renamed to `github.com/deposist/s-ui-rus-inst`. |
+| `1.4.2-beta` | Security and reliability hardening: bcrypt password storage with lazy migration, login rate limiter, hardened cookies, SSRF-resistant subscription fetcher, parameterized SQL, race-free runtime, automatic legacy backup adaptation, bilingual installer. Module renamed to `github.com/deposist/s-ui-x`. |
 
 For full changes, breaking notes, upgrade guide, and rollback steps, open the changelog in your preferred language.
 
@@ -115,12 +115,12 @@ reliability without changing the protocol surface.
 ### Linux/macOS
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh)
 ```
 
 ### Windows
 
-1. Download the latest Windows version from [GitHub Releases](https://github.com/deposist/s-ui-rus-inst/releases/latest).
+1. Download the latest Windows version from [GitHub Releases](https://github.com/deposist/s-ui-x/releases/latest).
 2. Extract the ZIP file.
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
@@ -128,22 +128,22 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 ## Install v1.5.3-beta (current beta)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.3-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.3-beta
 ```
 
 Or from a local clone:
 
 ```sh
-git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
-cd s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x.git
+cd s-ui-x
 sudo bash install.sh v1.5.3-beta
 ```
 
 Or from a local clone:
 
 ```sh
-git clone -b beta .git
-cd s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x.git
+cd s-ui-x
 sudo bash install.sh v1.5.1-beta
 ```
 
@@ -159,15 +159,15 @@ upgrade procedure and rollback notes — in the per-language changelog
 Append the version tag with `v` to the installation command. For example, version `v1.0.0`:
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.0.0
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.0.0
 ```
 
 ## Manual Installation
 
 ### Linux/macOS
 
-1. Download the latest S-UI version for your system and architecture from GitHub: [https://github.com/deposist/s-ui-rus-inst/releases/latest](https://github.com/deposist/s-ui-rus-inst/releases/latest)
-2. **Optional:** download the latest `s-ui.sh`: [https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/s-ui.sh](https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/s-ui.sh)
+1. Download the latest S-UI version for your system and architecture from GitHub: [https://github.com/deposist/s-ui-x/releases/latest](https://github.com/deposist/s-ui-x/releases/latest)
+2. **Optional:** download the latest `s-ui.sh`: [https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh](https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh)
 3. **Optional:** copy `s-ui.sh` to `/usr/bin/` and run `chmod +x /usr/bin/s-ui`.
 4. Extract the s-ui tar.gz archive to your chosen directory and enter the extracted folder.
 5. Copy the `*.service` files to `/etc/systemd/system/`, then run `systemctl daemon-reload`.
@@ -176,7 +176,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 
 ### Windows
 
-1. Download the latest Windows version from GitHub: [https://github.com/deposist/s-ui-rus-inst/releases/latest](https://github.com/deposist/s-ui-rus-inst/releases/latest)
+1. Download the latest Windows version from GitHub: [https://github.com/deposist/s-ui-x/releases/latest](https://github.com/deposist/s-ui-x/releases/latest)
 2. Download the appropriate Windows package, for example `s-ui-windows-amd64.zip`.
 3. Extract the ZIP file to your chosen directory.
 4. Run `install-windows.bat` as Administrator.
@@ -217,7 +217,7 @@ curl -fsSL https://get.docker.com | sh
 ```shell
 services:
   s-ui:
-    image: ghcr.io/deposist/s-ui-rus-inst
+    image: ghcr.io/deposist/s-ui-x
     container_name: s-ui
     hostname: "s-ui"
     network_mode: host
@@ -242,13 +242,13 @@ docker run -itd \
     -v $PWD/cert/:/root/cert/ \
     --name s-ui \
     --restart=unless-stopped \
-    ghcr.io/deposist/s-ui-rus-inst
+    ghcr.io/deposist/s-ui-x
 ```
 
 > Build the image yourself
 
 ```shell
-git clone https://github.com/deposist/s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x
 docker build -t s-ui .
 ```
 
@@ -269,7 +269,7 @@ docker build -t s-ui .
 
 ```shell
 # Clone the repository
-git clone https://github.com/deposist/s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x
 ```
 
 ### Frontend
@@ -393,7 +393,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 | `1.5.1-beta` | Закрытие техдолга и UI: асинхронная очередь Telegram, redaction payload'ов, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram через прокси с нормализованными errorClass, бакетированная observability, готовый фронт. |
 | `1.5.0` | Фундамент безопасности и realtime: secretbox для секретов, `audit_events` + `/api/security/audit`, CSRF для browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only по умолчанию). |
 | `1.4.3` | Обновление sing-box runtime с `v1.13.4` до `v1.13.11`. БД и UI без изменений. |
-| `1.4.2-beta` | Хардеринг безопасности и надёжности: bcrypt с ленивой миграцией, login rate limiter, защищённые cookie, SSRF-защищённый загрузчик подписок, параметризованный SQL, race-free runtime, авто-адаптация легаси-бэкапов, двуязычный установщик. Модуль переименован в `github.com/deposist/s-ui-rus-inst`. |
+| `1.4.2-beta` | Хардеринг безопасности и надёжности: bcrypt с ленивой миграцией, login rate limiter, защищённые cookie, SSRF-защищённый загрузчик подписок, параметризованный SQL, race-free runtime, авто-адаптация легаси-бэкапов, двуязычный установщик. Модуль переименован в `github.com/deposist/s-ui-x`. |
 
 Полный список изменений, breaking-заметки, гайд по обновлению и инструкции по откату — в выбранном вами changelog.
 
@@ -463,12 +463,12 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 ### Linux/macOS
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh)
 ```
 
 ### Windows
 
-1. Скачайте последнюю версию для Windows из [GitHub Releases](https://github.com/deposist/s-ui-rus-inst/releases/latest).
+1. Скачайте последнюю версию для Windows из [GitHub Releases](https://github.com/deposist/s-ui-x/releases/latest).
 2. Распакуйте ZIP-файл.
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
@@ -476,22 +476,22 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 ## Установка v1.5.3-beta (текущая бета)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.3-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.3-beta
 ```
 
 Или из локального клона:
 
 ```sh
-git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
-cd s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x.git
+cd s-ui-x
 sudo bash install.sh v1.5.3-beta
 ```
 
 Либо из локального клона:
 
 ```sh
-git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
-cd s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x.git
+cd s-ui-x
 sudo bash install.sh v1.5.1-beta
 ```
 
@@ -507,15 +507,15 @@ inbounds, outbounds, клиенты, TLS, services и токены сохран�
 Чтобы установить определённую старую версию, добавьте тег версии с `v` в конец команды установки. Например, версия `v1.0.0`:
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.0.0
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.0.0
 ```
 
 ## Ручная установка
 
 ### Linux/macOS
 
-1. Скачайте последнюю версию S-UI для вашей системы и архитектуры из GitHub: [https://github.com/deposist/s-ui-rus-inst/releases/latest](https://github.com/deposist/s-ui-rus-inst/releases/latest)
-2. **Необязательно:** скачайте последнюю версию `s-ui.sh`: [https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/s-ui.sh](https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/s-ui.sh)
+1. Скачайте последнюю версию S-UI для вашей системы и архитектуры из GitHub: [https://github.com/deposist/s-ui-x/releases/latest](https://github.com/deposist/s-ui-x/releases/latest)
+2. **Необязательно:** скачайте последнюю версию `s-ui.sh`: [https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh](https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh)
 3. **Необязательно:** скопируйте `s-ui.sh` в `/usr/bin/` и выполните `chmod +x /usr/bin/s-ui`.
 4. Распакуйте tar.gz-архив s-ui в выбранный каталог и перейдите в распакованную папку.
 5. Скопируйте файлы `*.service` в `/etc/systemd/system/`, затем выполните `systemctl daemon-reload`.
@@ -524,7 +524,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 
 ### Windows
 
-1. Скачайте последнюю версию для Windows из GitHub: [https://github.com/deposist/s-ui-rus-inst/releases/latest](https://github.com/deposist/s-ui-rus-inst/releases/latest)
+1. Скачайте последнюю версию для Windows из GitHub: [https://github.com/deposist/s-ui-x/releases/latest](https://github.com/deposist/s-ui-x/releases/latest)
 2. Скачайте подходящий пакет для Windows, например `s-ui-windows-amd64.zip`.
 3. Распакуйте ZIP-файл в выбранный каталог.
 4. Запустите `install-windows.bat` от имени администратора.
@@ -565,7 +565,7 @@ curl -fsSL https://get.docker.com | sh
 ```shell
 services:
   s-ui:
-    image: ghcr.io/deposist/s-ui-rus-inst
+    image: ghcr.io/deposist/s-ui-x
     container_name: s-ui
     hostname: "s-ui"
     network_mode: host
@@ -590,13 +590,13 @@ docker run -itd \
     -v $PWD/cert/:/root/cert/ \
     --name s-ui \
     --restart=unless-stopped \
-    ghcr.io/deposist/s-ui-rus-inst
+    ghcr.io/deposist/s-ui-x
 ```
 
 > Самостоятельная сборка образа
 
 ```shell
-git clone https://github.com/deposist/s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x
 docker build -t s-ui .
 ```
 
@@ -617,7 +617,7 @@ docker build -t s-ui .
 
 ```shell
 # Клонирование репозитория
-git clone https://github.com/deposist/s-ui-rus-inst
+git clone https://github.com/deposist/s-ui-x
 ```
 
 ### Фронтенд
@@ -711,7 +711,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 #### Благодарность автору оригинального проекта: alireza0
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date&theme=dark" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date" />
-  <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-x&type=date&theme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-x&type=date" />
+  <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=deposist/s-ui-x&type=date" />
 </picture>

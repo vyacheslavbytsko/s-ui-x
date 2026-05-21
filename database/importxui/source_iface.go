@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-x/database"
 )
 
 var ErrRemoteDisabled = errors.New("xui_remote_disabled")

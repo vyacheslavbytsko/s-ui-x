@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-x/config"
 )
 
 func TestVersionInfoFetchesAndCachesLatestRelease(t *testing.T) {
@@ -15,7 +15,7 @@ func TestVersionInfoFetchesAndCachesLatestRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9","html_url":"https://github.com/deposist/s-ui-rus-inst/releases/tag/v9.9.9"}`))
+		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9","html_url":"https://github.com/deposist/s-ui-x/releases/tag/v9.9.9"}`))
 	}))
 	defer server.Close()
 	resetVersionCheckForTest(t, server.Client(), server.URL)

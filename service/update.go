@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/logger"
 )
 
 const (
-	versionCheckURL     = "https://api.github.com/repos/deposist/s-ui-rus-inst/releases/latest"
+	versionCheckURL     = "https://api.github.com/repos/deposist/s-ui-x/releases/latest"
 	versionCheckCache   = time.Hour
 	versionCheckTimeout = 3 * time.Second
 )

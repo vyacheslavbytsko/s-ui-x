@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/service"
-	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util"
 
 	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/importxui"
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/importxui"
+	"github.com/deposist/s-ui-x/database/model"
 	xssh "golang.org/x/crypto/ssh"
 )
 

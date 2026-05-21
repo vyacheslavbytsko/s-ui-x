@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-x/service"
 )
 
 func TestObservabilitySamplerAggregatesBuckets(t *testing.T) {

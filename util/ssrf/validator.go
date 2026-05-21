@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 )
 
 const lookupTimeout = 5 * time.Second

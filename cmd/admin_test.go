@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-x/database"
 )
 
 func TestShowAdminDoesNotPrintPasswordHash(t *testing.T) {

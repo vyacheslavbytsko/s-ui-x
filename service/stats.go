@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/ipmonitor"
-	"github.com/deposist/s-ui-rus-inst/realtime"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/ipmonitor"
+	"github.com/deposist/s-ui-x/realtime"
 
 	"gorm.io/gorm"
 )

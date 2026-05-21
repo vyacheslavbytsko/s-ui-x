@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/util/common"
 	"golang.org/x/crypto/hkdf"
 )
 

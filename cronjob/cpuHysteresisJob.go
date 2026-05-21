@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-x/service"
 )
 
 const cpuHysteresisSamples = 5

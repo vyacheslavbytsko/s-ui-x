@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/cmd/migration"
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database/model"
-	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-x/cmd/migration"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

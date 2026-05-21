@@ -3,8 +3,8 @@ package api
 import (
 	"strconv"
 
-	"github.com/deposist/s-ui-rus-inst/ipmonitor"
-	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-x/ipmonitor"
+	"github.com/deposist/s-ui-x/service"
 
 	"github.com/gin-gonic/gin"
 )

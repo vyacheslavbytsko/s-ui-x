@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/database/model"
 )
 
 func TestLinkGeneratorTUICIncludesUDPRelayMode(t *testing.T) {

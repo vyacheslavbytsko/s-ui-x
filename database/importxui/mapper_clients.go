@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/database/model"
 	"github.com/gofrs/uuid/v5"
 )
 

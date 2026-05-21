@@ -431,7 +431,7 @@ before_show_menu() {
 }
 
 install() {
-    bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh)
     if [[ $? == 0 ]]; then
         if [[ $# == 0 ]]; then
             start
@@ -450,7 +450,7 @@ update() {
         fi
         return 0
     fi
-    bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh)
     if [[ $? == 0 ]]; then
         LOGI "$(t update_done)"
         exit 0
@@ -468,7 +468,7 @@ custom_version() {
 
     [[ "${panel_version}" != v* ]] && panel_version="v${panel_version}"
 
-    download_link="https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/install.sh"
+    download_link="https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh"
 
     install_command="bash <(curl -Ls $download_link) $panel_version"
 
@@ -665,7 +665,7 @@ show_log() {
 }
 
 update_shell() {
-    wget -O /usr/bin/s-ui -N --no-check-certificate https://github.com/deposist/s-ui-rus-inst/raw/main/s-ui.sh
+    wget -O /usr/bin/s-ui -N --no-check-certificate https://github.com/deposist/s-ui-x/raw/main/s-ui.sh
     if [[ $? != 0 ]]; then
         echo ""
         LOGE "$(t download_fail)"

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
 )
 
 func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {

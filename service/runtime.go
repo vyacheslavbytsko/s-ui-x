@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/core"
-	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-x/core"
+	"github.com/deposist/s-ui-x/database/model"
 )
 
 const defaultCoreStartCooldown = 15 * time.Second

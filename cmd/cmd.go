@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/deposist/s-ui-rus-inst/cmd/migration"
-	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-x/cmd/migration"
+	"github.com/deposist/s-ui-x/config"
 )
 
 func ParseCmd() {

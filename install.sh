@@ -308,13 +308,13 @@ install_s-ui() {
     artifact_name="s-ui-linux-$(arch).tar.gz"
 
     if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-rus-inst/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-x/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}$(t rate_limited)${plain}"
             exit 1
         fi
         echo -e "$(t fetching_latest "${last_version}")"
-        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
+        url="https://github.com/deposist/s-ui-x/releases/download/${last_version}/${artifact_name}"
         wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}$(t download_failed)${plain}"
@@ -324,7 +324,7 @@ install_s-ui() {
     else
         last_version=$1
         [[ "${last_version}" != v* ]] && last_version="v${last_version}"
-        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
+        url="https://github.com/deposist/s-ui-x/releases/download/${last_version}/${artifact_name}"
         echo -e "$(t installing_specific "${last_version}")"
         wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then

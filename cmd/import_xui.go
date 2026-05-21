@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
-	"github.com/deposist/s-ui-rus-inst/database"
-	"github.com/deposist/s-ui-rus-inst/database/importxui"
-	xfile "github.com/deposist/s-ui-rus-inst/database/importxui/source/file"
-	xssh "github.com/deposist/s-ui-rus-inst/database/importxui/source/ssh"
-	"github.com/deposist/s-ui-rus-inst/database/importxui/source/xuihttp"
+	"github.com/deposist/s-ui-x/config"
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/importxui"
+	xfile "github.com/deposist/s-ui-x/database/importxui/source/file"
+	xssh "github.com/deposist/s-ui-x/database/importxui/source/ssh"
+	"github.com/deposist/s-ui-x/database/importxui/source/xuihttp"
 )
 
 func runImportXui(args []string, out io.Writer) int {
