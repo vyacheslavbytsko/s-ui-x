@@ -234,8 +234,7 @@ import {
   type TelegramBackupScheduleMode,
   type TelegramBackupScheduleUnit,
 } from '@/views/telegramBackupSchedule'
-
-type TelegramSettingsMap = Record<string, string>
+import { pickTelegramSettings, type TelegramSettingsMap } from '@/views/telegramSettingsPayload'
 
 type TelegramResult = {
   success: boolean
@@ -247,24 +246,6 @@ type BackupRunStatus = {
   timestamp: string
   errorClass?: string
 }
-
-const telegramSettingKeys = [
-  'telegramEnabled',
-  'telegramBotToken',
-  'telegramChatID',
-  'telegramProxyURL',
-  'telegramProxyUsername',
-  'telegramProxyPassword',
-  'telegramCpuThreshold',
-  'telegramNotifyCpu',
-  'telegramReport',
-  'telegramReportCron',
-  'telegramBackupEnabled',
-  'telegramBackupPassphrase',
-  'telegramBackupCron',
-  'telegramBackupExcludeTables',
-  'telegramBackupMaxSizeMB',
-]
 
 const defaultTelegramSettings: TelegramSettingsMap = {
   telegramEnabled: 'false',
@@ -322,15 +303,6 @@ const setData = (data: TelegramSettingsMap) => {
   settings.value = pickTelegramSettings(normalized)
   syncTelegramBackupScheduleFromCron(settings.value.telegramBackupCron)
   oldSettings.value = { ...settings.value }
-}
-
-const pickTelegramSettings = (source: TelegramSettingsMap): TelegramSettingsMap => {
-  const picked: TelegramSettingsMap = {}
-  for (const key of telegramSettingKeys) {
-    picked[key] = String(source[key] ?? '')
-    picked[key + 'HasSecret'] = String(source[key + 'HasSecret'] ?? 'false')
-  }
-  return picked
 }
 
 const boolSetting = (key: string) => computed({
