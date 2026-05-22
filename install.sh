@@ -11,6 +11,10 @@ yellow='\033[0;33m'
 plain='\033[0m'
 
 LANG_FILE="/etc/s-ui/lang"
+SECRETBOX_ENV_DIR="/etc/s-ui"
+SECRETBOX_ENV_FILE="${SECRETBOX_ENV_DIR}/secretbox.env"
+SECRETBOX_DROPIN_DIR="/etc/systemd/system/s-ui.service.d"
+SECRETBOX_DROPIN_FILE="${SECRETBOX_DROPIN_DIR}/10-secretbox-env.conf"
 
 ask_language() {
     if [[ -n "${SUI_LANG}" ]]; then
@@ -81,6 +85,10 @@ t() {
             download_failed_specific) echo "下载 s-ui $2 失败，请检查该版本是否存在"; return ;;
             installed_running)  echo "s-ui $2 安装完成，现已启动并运行..."; return ;;
             panel_url)          echo "你可以通过以下 URL 访问面板："; return ;;
+            secretbox_key_generated) echo "已生成加密设置的 S-UI secretbox 密钥。该值只显示一次："; return ;;
+            secretbox_key_label) echo "SUI_SECRETBOX_KEY：$2"; return ;;
+            secretbox_key_file) echo "密钥文件：$2"; return ;;
+            secretbox_key_keep) echo "请保持该文件和密钥私密，并在更新、恢复时保留同一个值。"; return ;;
         esac
     fi
     case "${lang}:${key}" in
@@ -156,6 +164,14 @@ t() {
         ru:installed_running)  echo "s-ui $2 установлен, запущен и работает...";;
         en:panel_url)          echo "Panel is available at:";;
         ru:panel_url)          echo "Панель доступна по адресу:";;
+        en:secretbox_key_generated) echo "Generated the S-UI secretbox key for encrypted settings. It is shown once:";;
+        ru:secretbox_key_generated) echo "Сгенерирован S-UI secretbox key для зашифрованных настроек. Он показывается один раз:";;
+        en:secretbox_key_label) echo "SUI_SECRETBOX_KEY: $2";;
+        ru:secretbox_key_label) echo "SUI_SECRETBOX_KEY: $2";;
+        en:secretbox_key_file) echo "Key file: $2";;
+        ru:secretbox_key_file) echo "Файл ключа: $2";;
+        en:secretbox_key_keep) echo "Keep this file and key private, and preserve the same value across updates and restores.";;
+        ru:secretbox_key_keep) echo "Держите этот файл и ключ в секрете и сохраняйте то же значение при обновлениях и восстановлении.";;
         *) echo "${key}";;
     esac
 }
@@ -215,6 +231,69 @@ install_base() {
         apt-get update && apt-get install -y -q wget curl tar tzdata
         ;;
     esac
+}
+
+read_secretbox_key_file() {
+    [[ -f "${SECRETBOX_ENV_FILE}" ]] || return 1
+
+    local line
+    local secretbox_key
+    while IFS= read -r line; do
+        case "${line}" in
+            SUI_SECRETBOX_KEY=*)
+                secretbox_key="${line#SUI_SECRETBOX_KEY=}"
+                if [[ -n "${secretbox_key}" ]]; then
+                    printf '%s' "${secretbox_key}"
+                    return 0
+                fi
+                ;;
+        esac
+    done <"${SECRETBOX_ENV_FILE}"
+    return 1
+}
+
+write_secretbox_key_file() {
+    local secretbox_key="$1"
+
+    mkdir -p "${SECRETBOX_ENV_DIR}"
+    if [[ -f "${SECRETBOX_ENV_FILE}" ]]; then
+        printf '\nSUI_SECRETBOX_KEY=%s\n' "${secretbox_key}" >>"${SECRETBOX_ENV_FILE}"
+    else
+        (umask 077 && printf 'SUI_SECRETBOX_KEY=%s\n' "${secretbox_key}" >"${SECRETBOX_ENV_FILE}")
+    fi
+    chmod 600 "${SECRETBOX_ENV_FILE}"
+}
+
+prepare_secretbox_key() {
+    local secretbox_key
+    local generated_key="false"
+
+    if secretbox_key=$(read_secretbox_key_file); then
+        chmod 600 "${SECRETBOX_ENV_FILE}"
+        export SUI_SECRETBOX_KEY="${secretbox_key}"
+    else
+        if [[ -n "${SUI_SECRETBOX_KEY:-}" ]]; then
+            secretbox_key="${SUI_SECRETBOX_KEY}"
+        else
+            secretbox_key=$(head -c 32 /dev/urandom | base64 | tr -d '\r\n')
+            generated_key="true"
+        fi
+        write_secretbox_key_file "${secretbox_key}"
+        export SUI_SECRETBOX_KEY="${secretbox_key}"
+
+        if [[ "${generated_key}" == "true" ]]; then
+            echo -e "###############################################"
+            echo -e "${yellow}$(t secretbox_key_generated)${plain}"
+            echo -e "${green}$(t secretbox_key_label "${secretbox_key}")${plain}"
+            echo -e "$(t secretbox_key_file "${SECRETBOX_ENV_FILE}")"
+            echo -e "${red}$(t secretbox_key_keep)${plain}"
+            echo -e "###############################################"
+        fi
+    fi
+
+    mkdir -p "${SECRETBOX_DROPIN_DIR}"
+    printf '[Service]\nEnvironmentFile=-%s\n' "${SECRETBOX_ENV_FILE}" >"${SECRETBOX_DROPIN_FILE}"
+    chmod 644 "${SECRETBOX_DROPIN_FILE}"
 }
 
 config_after_install() {
@@ -347,6 +426,7 @@ install_s-ui() {
     cp -f s-ui/*.service /etc/systemd/system/
     rm -rf s-ui
 
+    prepare_secretbox_key
     config_after_install
     prepare_services
 

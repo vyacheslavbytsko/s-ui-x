@@ -9,6 +9,8 @@ yellow='\033[0;33m'
 plain='\033[0m'
 
 LANG_FILE="/etc/s-ui/lang"
+SECRETBOX_DROPIN_DIR="/etc/systemd/system/s-ui.service.d"
+SECRETBOX_DROPIN_FILE="${SECRETBOX_DROPIN_DIR}/10-secretbox-env.conf"
 
 load_language() {
     if [[ -n "${SUI_LANG}" ]]; then
@@ -487,6 +489,8 @@ uninstall() {
     systemctl stop s-ui
     systemctl disable s-ui
     rm /etc/systemd/system/s-ui.service -f
+    rm "${SECRETBOX_DROPIN_FILE}" -f
+    rmdir "${SECRETBOX_DROPIN_DIR}" 2>/dev/null || true
     systemctl daemon-reload
     systemctl reset-failed
     rm /etc/s-ui/ -rf

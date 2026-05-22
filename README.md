@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4-beta3`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4-beta4`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -42,6 +42,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.4-beta4` | Systemd installer bootstrap for encrypted settings: `install.sh` generates a stable root-only `SUI_SECRETBOX_KEY`, shows the generated value once, loads it through a drop-in and preserves it on upgrade. |
 | `1.5.4-beta3` | Nexus Overview refinement: deeper navy teal/violet palette, duplicate Traffic overview and Health KPI removal, denser Overview rows and compact protocol summaries while preserving frontend-only security and dependency boundaries. |
 | `1.5.4-beta2` | Nexus UI beta hotfix: canceled duplicate dashboard reads stay silent instead of showing `CanceledError: canceled` as a failed notification; real HTTP failures still notify. |
 | `1.5.4-beta1` | Opt-in Nexus UI mode beta: adds the UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar and fixed Nexus Overview dashboard while preserving classic as default and keeping backend/API/CSRF/CSP/dependencies unchanged. |
@@ -133,10 +134,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.4-beta3
+## Install v1.5.4-beta4
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta4
 ```
 
 Or from a local clone:
@@ -144,7 +145,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4-beta3
+sudo bash install.sh v1.5.4-beta4
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -341,6 +342,11 @@ Run the backend from the repository root:
 | SUI_ALLOW_PRIVATE_SUB_URLS | `boolean` | `false` |
 | SUI_SECRETBOX_KEY | `string` | - (falls back to `settings.secret`) |
 
+For systemd installs run by `install.sh`, S-UI generates a stable
+`SUI_SECRETBOX_KEY` once in `/etc/s-ui/secretbox.env`, shows the generated
+value once, and loads the file through a systemd drop-in. Keep that file
+private and preserve the same key across updates and restores.
+
 </details>
 
 ## SSL Certificates
@@ -368,7 +374,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4-beta3`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4-beta4`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -386,6 +392,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.4-beta4` | Bootstrap зашифрованных настроек в systemd installer: `install.sh` генерирует стабильный root-only `SUI_SECRETBOX_KEY`, один раз показывает значение, подключает его через drop-in и сохраняет при обновлении. |
 | `1.5.4-beta3` | Refinement Nexus Overview: более глубокая navy teal/violet palette, удаление дубликатов Traffic overview и Health KPI, плотнее Overview rows и compact protocol summaries при сохранении frontend-only security/dependency границ. |
 | `1.5.4-beta2` | Hotfix Nexus UI beta: штатные отмены duplicate dashboard reads больше не показываются как failed notification `CanceledError: canceled`, а настоящие HTTP-ошибки продолжают уведомлять. |
 | `1.5.4-beta1` | Opt-in beta Nexus UI mode: добавляет UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar и фиксированный Nexus Overview dashboard, при этом classic остаётся дефолтом, а backend/API/CSRF/CSP/dependencies не меняются. |
@@ -477,10 +484,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.4-beta3
+## Установка v1.5.4-beta4
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta4
 ```
 
 Или из локального клона:
@@ -488,7 +495,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4-beta3
+sudo bash install.sh v1.5.4-beta4
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,
@@ -684,6 +691,12 @@ go build -o sui main.go
 | SUI_TRUSTED_PROXIES | список CIDR/IP через запятую | - (XFF игнорируется) |
 | SUI_ALLOW_PRIVATE_SUB_URLS | `boolean` | `false` |
 | SUI_SECRETBOX_KEY | `string` | - (fallback на `settings.secret`) |
+
+Для systemd-установок через `install.sh` S-UI один раз генерирует стабильный
+`SUI_SECRETBOX_KEY` в `/etc/s-ui/secretbox.env`, один раз показывает
+сгенерированное значение и подключает файл через systemd drop-in. Держите
+этот файл в секрете и сохраняйте тот же ключ при обновлениях и
+восстановлении.
 
 </details>
 

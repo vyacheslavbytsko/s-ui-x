@@ -7,6 +7,22 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4-beta4] - 2026-05-22 - installer secretbox key bootstrap
+
+- Systemd installs through `install.sh` now generate a stable
+  `SUI_SECRETBOX_KEY` for encrypted settings when no installer-managed
+  key exists yet.
+- The generated secretbox key is shown once during installation, stored
+  in root-only `/etc/s-ui/secretbox.env`, and loaded through an
+  installer-owned systemd drop-in.
+- Upgrade runs preserve the existing installer-managed key instead of
+  rotating it; uninstall removes the drop-in with the rest of the
+  systemd install state.
+- Documented the installer-managed secretbox key path and retention
+  requirement for systemd users.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.4-beta4`.
+
 ## [1.5.4-beta3] - 2026-05-22 - Nexus Overview density refinement
 
 - Re-graded Nexus dark surfaces to a deeper navy palette with teal and

@@ -7,6 +7,21 @@
 
 ## Unreleased
 
+## [1.5.4-beta4] — 2026-05-22 — bootstrap secretbox key в installer
+
+- Systemd-установки через `install.sh` теперь генерируют стабильный
+  `SUI_SECRETBOX_KEY` для зашифрованных настроек, если installer-managed
+  ключ ещё не существует.
+- Сгенерированный secretbox key один раз показывается при установке,
+  сохраняется в root-only `/etc/s-ui/secretbox.env` и подключается через
+  installer-owned systemd drop-in.
+- При обновлении существующий installer-managed key сохраняется без
+  ротации; uninstall убирает drop-in вместе с systemd install state.
+- Для systemd users задокументированы путь к installer-managed key и
+  требование сохранять его между обновлениями и восстановлением.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.4-beta4`.
+
 ## [1.5.4-beta3] — 2026-05-22 — уплотнение Nexus Overview
 
 - Dark-палитра Nexus переведена на более глубокие navy surfaces с

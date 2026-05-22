@@ -6,6 +6,18 @@
 
 ## 未发布
 
+## [1.5.4-beta4] - 2026-05-22 - installer secretbox key bootstrap
+
+- 通过 `install.sh` 的 systemd 安装现在会在没有 installer-managed key
+  时为加密设置生成稳定的 `SUI_SECRETBOX_KEY`。
+- 新生成的 secretbox key 在安装时仅显示一次，保存到 root-only
+  `/etc/s-ui/secretbox.env`，并通过 installer-owned systemd drop-in 加载。
+- 升级会保留现有 installer-managed key 而不会轮换；uninstall 会随
+  systemd install state 一起移除该 drop-in。
+- 已为 systemd users 记录 installer-managed key 路径及保留要求。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为
+  `v1.5.4-beta4`。
+
 ## [1.5.4-beta3] - 2026-05-22 - Nexus Overview density refinement
 
 - Nexus dark surface palette 改为更深的 navy 基调，并拆分 teal/violet
