@@ -513,7 +513,9 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 			return nil
 		}
 		if found && item.Action == ActionReplace {
-			_ = tx.Delete(&existing).Error
+			if err := tx.Delete(&existing).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return err
