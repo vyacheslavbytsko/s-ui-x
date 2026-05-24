@@ -409,24 +409,40 @@ func consumeWSToken(token string) (string, bool) {
 	defer wsTokens.Unlock()
 
 	candidate := wsTokenDigest(token)
+	keys := make([][sha256.Size]byte, 0, len(wsTokens.tokens))
+	for key := range wsTokens.tokens {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return bytes.Compare(keys[i][:], keys[j][:]) < 0
+	})
+
 	matched := 0
 	var matchedKey [sha256.Size]byte
-	var matchedData realtimeToken
-	for key, data := range wsTokens.tokens {
+	matchedExpiresAtUnixNano := int64(0)
+	matchedUserIndex := 0
+	users := make([]string, len(keys))
+	for i, key := range keys {
+		data := wsTokens.tokens[key]
+		users[i] = data.user
 		eq := subtle.ConstantTimeCompare(candidate[:], key[:])
-		if eq == 1 {
-			matchedKey = key
-			matchedData = data
-		}
-		matched |= eq
+		subtle.ConstantTimeCopy(eq, matchedKey[:], key[:])
+		matched = subtle.ConstantTimeSelect(eq, 1, matched)
+		matchedExpiresAtUnixNano = constantTimeSelectInt64(eq, data.expiresAt.UnixNano(), matchedExpiresAtUnixNano)
+		matchedUserIndex = subtle.ConstantTimeSelect(eq, i+1, matchedUserIndex)
 	}
-	if matched == 1 {
-		delete(wsTokens.tokens, matchedKey)
-	}
-	if matched != 1 || time.Now().After(matchedData.expiresAt) {
+	delete(wsTokens.tokens, matchedKey)
+	now := time.Now()
+	matchedExpiresAt := time.Unix(0, matchedExpiresAtUnixNano)
+	if matched != 1 || now.After(matchedExpiresAt) {
 		return "", false
 	}
-	return matchedData.user, true
+	return users[matchedUserIndex-1], true
+}
+
+func constantTimeSelectInt64(v int, x int64, y int64) int64 {
+	mask := int64(-v)
+	return (x & mask) | (y &^ mask)
 }
 
 func maybeSweepWSTokensLocked(now time.Time) {
