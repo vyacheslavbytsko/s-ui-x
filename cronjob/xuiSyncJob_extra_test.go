@@ -61,8 +61,18 @@ func TestXUISyncJobExtraRunProfileFailureRecordsFailedSummary(t *testing.T) {
 	if err := json.Unmarshal(stored.LastRunSummary, &summary); err != nil {
 		t.Fatal(err)
 	}
-	if summary["error"] != "failed" {
-		t.Fatalf("current baseline should persist generic failed summary: %#v", summary)
+	errStr, ok := summary["error"].(string)
+	if !ok {
+		t.Fatalf("summary error should be string, got %#v", summary["error"])
+	}
+	if errStr == "failed" {
+		t.Fatalf("summary error should be sanitized lastErr, got generic %q", errStr)
+	}
+	if !strings.Contains(errStr, "missing.db") {
+		t.Fatalf("summary error should reference missing source path, got %q", errStr)
+	}
+	if summary["errorClass"] != "source" {
+		t.Fatalf("summary errorClass should be source, got %#v", summary["errorClass"])
 	}
 }
 
@@ -115,9 +125,7 @@ func TestXUISyncJobExtraFailureSummaryKeepsLastErr(t *testing.T) {
 	}
 }
 
-func TestXUISyncJobExtraFailureSummaryIncludesLastErr_XFAILIssue4(t *testing.T) {
-	t.Skip("XFAIL: issue 4; xui sync failure summary currently stores generic error=failed instead of lastErr")
-
+func TestXUISyncJobExtraFailureSummaryIncludesLastErrIssue4(t *testing.T) {
 	initCronJobTestDB(t)
 	profile := createXUISyncProfileForTest(t, filepath.Join(t.TempDir(), "missing.db"))
 	job := &XUISyncJob{now: func() time.Time { return time.Unix(1700000300, 0) }}

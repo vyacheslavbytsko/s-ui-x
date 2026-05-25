@@ -85,7 +85,12 @@ func (j *XUISyncJob) RunProfile(ctx context.Context, profile *model.XUISyncProfi
 			}
 		}
 	}
-	_ = j.recordRun(profile, "failed", map[string]any{"error": "failed"})
+	summary := map[string]any{"error": "failed"}
+	if lastErr != nil {
+		summary["error"] = redact.String(lastErr.Error())
+		summary["errorClass"] = classifyXUISyncError(lastErr)
+	}
+	_ = j.recordRun(profile, "failed", summary)
 	recordSyncAudit("xui_sync_failed", profile, nil, lastErr)
 	return lastErr
 }
