@@ -885,3 +885,40 @@ Cluster G закрыл backup safety пункты 10, 11, 12 тремя producti
 ### Файлы post-fix-cluster-G
 
 `pre-cluster-G-head.txt`, `pre-cluster-G-status.txt`, `post-cluster-G-status.txt`, `status-diff.txt`, `build.txt`, `vet.txt`, `anchor-10-after.txt`, `anchor-11-after.txt`, `anchor-12-after.txt`, `test-database.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Cluster I 2026-05-25
+
+### Коммиты
+
+- `c782e4b324b85e0848d5c2607473dbeba4c5e4f2` — fix(service/telegram): cancel notifier backoff on stop (registry #22)
+- `6610062fa9eb5af9eac38140c191fcd7b42fea89` — fix(service/telegram-backup): harden secret zeroization paths (registry #25)
+- `655d7017b92f5119411e17661af1dd897794433f` — fix(service/warp): centralize authorized client headers (registry #31)
+
+Cluster I закрыл Telegram/WARP robustness пункты 22, 25 и 31 тремя отдельными production-коммитами. Frontend, `go.mod`, `go.sum` и frontend package manifests не затрагивались.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go build ./...` | green | без регрессии | [`post-fix-cluster-I/build.txt`](post-fix-cluster-I/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-cluster-I/vet.txt`](post-fix-cluster-I/vet.txt) |
+| anchor #22: `go test -run Issue22 ./service/... -count=10 -timeout 5m` | green | stop-aware notifier backoff anchor GREEN, 10/10 | [`post-fix-cluster-I/anchor-22-after.txt`](post-fix-cluster-I/anchor-22-after.txt) |
+| anchor #25: `go test -run Issue25 ./service/... -count=10 -timeout 5m` | green | secret-bag/oversize anchors GREEN, 10/10 | [`post-fix-cluster-I/anchor-25-after.txt`](post-fix-cluster-I/anchor-25-after.txt) |
+| anchor #31: `go test -run Issue31 ./service/... -count=10 -timeout 5m` | green | WARP header capture anchors GREEN, 10/10 | [`post-fix-cluster-I/anchor-31-after.txt`](post-fix-cluster-I/anchor-31-after.txt) |
+| `go test ./service/... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-cluster-I/test-service.txt`](post-fix-cluster-I/test-service.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-cluster-I/test.txt`](post-fix-cluster-I/test.txt) |
+| `go test -race ./... -timeout 900s` | green | Cluster G race-baseline сохранён | [`post-fix-cluster-I/test-race.txt`](post-fix-cluster-I/test-race.txt) |
+| `gosec ./...` | red baseline | exactly 55 issues | [`post-fix-cluster-I/gosec.txt`](post-fix-cluster-I/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-cluster-I/govulncheck.txt`](post-fix-cluster-I/govulncheck.txt) |
+
+### Дельта
+
+- П. 22: `telegramNotifier.deliver()` больше не использует `telegramSleep` для retry backoff; `sleepBackoff` создаёт `time.NewTimer`, выбирает между timer и `stopCh`, корректно stop/drain'ит timer и немедленно завершает retry loop при `Stop`.
+- П. 25: `TelegramBackupService.RunOnce` передаёт payload/passphrase во владение `telegramBackupSecretBag`; passphrase зануляется сразу после build envelope, payload — после появления envelope, а deferred bag zeroing закрывает error paths до audit.
+- П. 31: `setWarpAuthorizedHeaders` централизует WARP client headers + Bearer auth для `getWarpInfo` и `SetWarpLicense`; preferred `api_version` de-dupes against fallback list.
+- `gosec` остался known red baseline с тем же счётчиком 55 issues; `govulncheck` остался green.
+- Frontend и зависимости не затрагивались.
+
+### Файлы post-fix-cluster-I
+
+`pre-cluster-I-head.txt`, `pre-cluster-I-status.txt`, `build.txt`, `vet.txt`, `anchor-22-after.txt`, `anchor-25-after.txt`, `anchor-31-after.txt`, `test-service.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`, `post-cluster-I-status.txt`, `status-diff.txt`.

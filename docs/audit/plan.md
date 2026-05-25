@@ -95,6 +95,7 @@
 
 22. **P2 / Telegram retry** — [`telegramNotifier.deliver()`](../../service/telegram.go:196) использует `telegramSleep(delay)` без `context`. Stop ждёт через [`done`](../../service/telegram.go:242), но текущая отправка всё равно проспит до конца.
     - Fix: `time.NewTimer` с select на `stopCh`.
+    - Status 2026-05-25: closed by Cluster I; notifier retry backoff is stop-aware and `Stop` cancels pending retry sleeps.
 
 23. **P2 / Crash risk** — в [`ServerService.GetSystemInfo()`](../../service/server.go:168) код полагается на `netInterfaces[i].Flags[0]`, `Flags[1]`, и `address.Addr[0:6]` без проверок длины.
     - Fix: безопасное сравнение по содержанию слайса; `len(address.Addr) >= 6`.
@@ -104,6 +105,7 @@
 
 25. **P2 / Backup leak risk** — [`telegram_backup.RunOnce()`](../../service/telegram_backup.go:46) после ошибки шифрования `defer zeroBytes(payload)` корректен, но при ошибке загрузки passphrase (строки 123‑127) логика хрупкая.
     - Fix: явный pattern «secret bag» вокруг payload.
+    - Status 2026-05-25: closed by Cluster I; Telegram backup payload/passphrase zeroization uses explicit secret-bag ownership.
 
 26. **P3 / Logging** — [`StatsService.SaveStats()`](../../service/stats.go:51) при `commitErr` шлёт `realtime.Publish` с предупреждением, но не пишет audit и не возвращает ошибку наружу.
 
@@ -116,6 +118,7 @@
 30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
 
 31. **P3 / Endpoint warp** — порядок вызовов в [`WarpService.SetWarpLicense()`](../../service/warp.go:311) фрагильный (Authorization до setWarpHeaders).
+    - Status 2026-05-25: closed by Cluster I; WARP authorized headers are centralized and covered by request-capture tests.
 
 ### 1.4. API / handlers / realtime
 
@@ -964,3 +967,23 @@ Cluster G закрыл backup safety пункты 10, 11, 12 тремя producti
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster G 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-G/`.
+
+## Post-fix Cluster I 2026-05-25
+
+### Коммиты
+
+- `c782e4b324b85e0848d5c2607473dbeba4c5e4f2` — fix(service/telegram): cancel notifier backoff on stop (registry #22)
+- `6610062fa9eb5af9eac38140c191fcd7b42fea89` — fix(service/telegram-backup): harden secret zeroization paths (registry #25)
+- `655d7017b92f5119411e17661af1dd897794433f` — fix(service/warp): centralize authorized client headers (registry #31)
+
+Cluster I закрыл Telegram/WARP robustness пункты 22, 25 и 31 тремя production-коммитами в `service/`. Frontend и зависимости не затрагивались.
+
+### Дельта по реестру
+
+- П. 22 «Telegram retry» — closed by Cluster I. `telegramNotifier` получил stop-aware backoff на `time.NewTimer` и `stopCh`; `Stop` закрывает stop channel один раз и прерывает pending retry sleep. Anchor `TestTelegramNotifierStopCancelsBackoffIssue22` GREEN 10/10.
+- П. 25 «Backup leak risk» — closed by Cluster I. `RunOnce` передаёт payload/passphrase во владение private `telegramBackupSecretBag`, зануляет passphrase сразу после build envelope и payload после появления envelope. Secret-bag и oversize audit anchors GREEN 10/10.
+- П. 31 «Endpoint warp» — closed by Cluster I. WARP authorized headers централизованы в `setWarpAuthorizedHeaders`, `SetWarpLicense` de-dupes preferred API version, request-capture tests проверяют headers, Authorization и JSON body. Anchors GREEN 10/10.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster I 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-I/`.
