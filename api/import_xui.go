@@ -267,6 +267,7 @@ func (a *ApiService) ImportXuiRollback(c *gin.Context) {
 	a.recordAudit(c, requestActor(c), "xui_import_rollback", "database", service.AuditSeverityWarn, map[string]any{
 		"backup": filepath.Base(backupPath),
 	})
+	realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	jsonMsg(c, "import-xui", nil)
 }
 
