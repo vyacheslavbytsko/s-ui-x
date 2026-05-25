@@ -991,3 +991,36 @@ Singleton #23 закрыл crash-risk в `ServerService.GetSystemInfo()` при 
 ### Файлы post-fix-23
 
 `pre-fix-23-head.txt`, `pre-fix-23-status.txt`, `post-fix-23-status.txt`, `status-diff.txt`, `anchor-23-service.txt`, `test-chaos-system-info.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #24 2026-05-25
+
+### Коммиты
+
+- `c208edcec7c07f3807b6a1a6af09fc59287a32ee` — fix(service/server): filter non-public system info addresses (registry #24)
+
+Singleton #24 закрыл confidentiality gap в `ServerService.GetSystemInfo()` одним production-коммитом в `service/server.go` и `service/server_system_info_test.go`. `sys.ipv4` и `sys.ipv6` сохранили shape `[]string`; теперь в эти ключи попадают только public routable interface addresses. Frontend, dependencies, API/schema, `Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests и `tests/chaos/**` не затрагивались.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue23|Issue24" -count=10` | green | package-local Issue23/Issue24 anchors GREEN 10/10 | [`post-fix-24/anchor-23-24-service.txt`](post-fix-24/anchor-23-24-service.txt) |
+| `go test -tags=chaos ./tests/chaos/... -run GetSystemInfo -count=1 -timeout 5m` | green | current-host chaos smoke GREEN; `tests/chaos` untouched | [`post-fix-24/test-chaos-system-info.txt`](post-fix-24/test-chaos-system-info.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-24/build.txt`](post-fix-24/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-24/vet.txt`](post-fix-24/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-24/test.txt`](post-fix-24/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-24/test-race.txt`](post-fix-24/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-24/gosec.txt`](post-fix-24/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-24/govulncheck.txt`](post-fix-24/govulncheck.txt) |
+
+### Дельта
+
+- П. 24 «GetSystemInfo confidentiality» — closed. `GetSystemInfo` now parses interface addresses with `net/netip` and filters private, link-local, loopback, unspecified, multicast and invalid values before appending to `ipv4`/`ipv6`.
+- П. 23 regression anchor remains GREEN 10/10; short/empty interface data still does not panic, and invalid `"x"` no longer leaks into `ipv6`.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check.
+- `govulncheck` remains green: `No vulnerabilities found.`
+- No frontend/dependency/API shape changes were made.
+
+### Файлы post-fix-24
+
+`pre-fix-24-head.txt`, `pre-fix-24-status.txt`, `post-fix-24-status.txt`, `status-diff.txt`, `anchor-23-24-service.txt`, `test-chaos-system-info.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.

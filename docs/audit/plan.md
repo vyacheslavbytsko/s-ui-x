@@ -103,6 +103,7 @@
 
 24. **P2 / Confidentiality** — [`ServerService.GetSystemInfo()`](../../service/server.go:168) возвращает все IPv4/IPv6 интерфейсов без фильтрации, в том числе приватные/линк‑локальные.
     - Fix: фильтр или явный токеновый scope для системной инфы.
+    - Status 2026-05-25: closed by singleton #24; GetSystemInfo now filters non-public/private/link-local interface addresses while preserving ipv4/ipv6 response shape.
 
 25. **P2 / Backup leak risk** — [`telegram_backup.RunOnce()`](../../service/telegram_backup.go:46) после ошибки шифрования `defer zeroBytes(payload)` корректен, но при ошибке загрузки passphrase (строки 123‑127) логика хрупкая.
     - Fix: явный pattern «secret bag» вокруг payload.
@@ -1028,3 +1029,20 @@ Singleton #23 закрыл crash-risk в `ServerService.GetSystemInfo()` при 
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #23 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-23/`.
+
+## Post-fix Singleton #24 2026-05-25
+
+### Коммиты
+
+- `c208edcec7c07f3807b6a1a6af09fc59287a32ee` — fix(service/server): filter non-public system info addresses (registry #24)
+
+Singleton #24 закрыл confidentiality gap в `ServerService.GetSystemInfo()`: `ipv4`/`ipv6` сохраняют shape `[]string`, но private/link-local/non-routable interface addresses больше не возвращаются.
+
+### Дельта по реестру
+
+- П. 24 «GetSystemInfo confidentiality» — closed. `GetSystemInfo` фильтрует private, link-local, loopback, unspecified, multicast и invalid interface addresses; public IPv4/IPv6 остаются в прежних keys. Package-local Issue24 anchor GREEN 10/10.
+- П. 23 regression anchor остаётся GREEN 10/10.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #24 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-24/`.
