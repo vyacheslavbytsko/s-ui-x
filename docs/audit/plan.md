@@ -141,6 +141,7 @@
 
 36. **P2 / DoS** — [`enforceXUIRateLimit()`](../../api/import_xui.go:266) держит rate‑state в `xuiRates` map; ключ под анонимом — IP, нет верхней границы на размер мапы.
     - Fix: bounded map (LRU).
+    - Status 2026-05-25: closed by singleton #36; xui rate-limit cache now prunes expired buckets and evicts oldest entries to keep the in-memory map bounded while preserving per-actor quota behavior.
 
 37. **P2 / API contract** — [`ImportXuiApply()`](../../api/import_xui.go:166) принимает план как `Fields["plan"]` (строка JSON в форме). Размер ограничен `maxXUIFieldBytes=8MiB`.
     - Fix: chunked endpoint или stream‑декодирование plan через body.
@@ -1046,3 +1047,20 @@ Singleton #24 закрыл confidentiality gap в `ServerService.GetSystemInfo()
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #24 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-24/`.
+
+## Post-fix Singleton #36 2026-05-25
+
+### Коммиты
+
+- `2ee7d7de84bae65dc5dc90ad3b9c59183007dc14` — fix(api/import-xui): bound xui rate-limit cache (registry #36)
+
+Singleton #36 закрыл DoS-риск в `enforceXUIRateLimit()`: `xuiRates` больше не может расти без верхней границы от потока уникальных anonymous/IP keys. Existing 5-per-minute quota and 429 behavior preserved.
+
+### Дельта по реестру
+
+- П. 36 «xui rate-limit map unbounded» — closed. Package-local Issue36 anchor verifies bounded map length under unique-IP pressure and stale bucket pruning. Existing `ImportXUIReportsRateLimit` anchor remains GREEN 10/10.
+- `tests/chaos/xui_rate_limit_unbounded_test.go` не менялся; deferred chaos/XFAIL остается отдельной задачей.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #36 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-36/`.

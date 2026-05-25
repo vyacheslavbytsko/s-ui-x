@@ -1024,3 +1024,36 @@ Singleton #24 закрыл confidentiality gap в `ServerService.GetSystemInfo()
 ### Файлы post-fix-24
 
 `pre-fix-24-head.txt`, `pre-fix-24-status.txt`, `post-fix-24-status.txt`, `status-diff.txt`, `anchor-23-24-service.txt`, `test-chaos-system-info.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #36 2026-05-25
+
+### Коммиты
+
+- `2ee7d7de84bae65dc5dc90ad3b9c59183007dc14` — fix(api/import-xui): bound xui rate-limit cache (registry #36)
+
+Singleton #36 закрыл DoS-риск в `enforceXUIRateLimit()` одним production-коммитом в `api/import_xui.go` и package-local anchor `api/import_xui_rate_limit_test.go`. Frontend, dependencies, DB schema/migrations, API response shape/status/body and token-scope behavior не затрагивались.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue36|ImportXUIReportsRateLimit" -count=10` | green | Issue36 bounded-cache/stale-prune anchors GREEN 10/10; existing quota anchor GREEN 10/10 | [`post-fix-36/anchor-36-api.txt`](post-fix-36/anchor-36-api.txt) |
+| `go test -tags=chaos ./tests/chaos/... -run XUIRateLimit -count=1 -timeout 5m` | green | chaos smoke GREEN; `tests/chaos/**` untouched | [`post-fix-36/test-chaos-xui-rate-limit.txt`](post-fix-36/test-chaos-xui-rate-limit.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-36/build.txt`](post-fix-36/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-36/vet.txt`](post-fix-36/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-36/test.txt`](post-fix-36/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-36/test-race.txt`](post-fix-36/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-36/gosec.txt`](post-fix-36/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-36/govulncheck.txt`](post-fix-36/govulncheck.txt) |
+
+### Дельта
+
+- П. 36 «xui rate-limit map unbounded» — closed. `xuiRateMaxEntries` caps the package-level `xuiRates` cache; on first insert past the cap, `pruneXUIRateLimitLocked` removes expired buckets and evicts oldest remaining buckets until the map is below the cap.
+- Existing per-actor behavior is preserved: same actor/IP still gets `xuiRequestMax` allowed requests per `xuiRequestWindow`, and existing 429 response behavior remains covered by `TestAPIImportXUIReportsRateLimitPhase5`.
+- Package-local Issue36 anchors cover unique anonymous/IP pressure and stale bucket pruning without using DB-backed 429 audit paths.
+- `tests/chaos/xui_rate_limit_unbounded_test.go` не менялся; deferred chaos/XFAIL remains a separate task.
+- Frontend, dependencies, schema/migrations, `Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests and `tests/chaos/**` не затрагивались.
+
+### Файлы post-fix-36
+
+`pre-fix-36-head.txt`, `pre-fix-36-status.txt`, `post-fix-36-status.txt`, `status-diff.txt`, `anchor-36-api.txt`, `test-chaos-xui-rate-limit.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
