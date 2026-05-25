@@ -1057,3 +1057,36 @@ Singleton #36 закрыл DoS-риск в `enforceXUIRateLimit()` одним pr
 ### Файлы post-fix-36
 
 `pre-fix-36-head.txt`, `pre-fix-36-status.txt`, `post-fix-36-status.txt`, `status-diff.txt`, `anchor-36-api.txt`, `test-chaos-xui-rate-limit.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #19 2026-05-25
+
+### Коммиты
+
+- `14c4f8d3d3f81f43e0f7f2614fc5f00832798b63` — fix(service/settings): make default initialization idempotent (registry #19)
+
+Singleton #19 закрыл startup race в `SettingService.GetAllSetting()` одним production-коммитом в `service/setting.go` и package-local anchor `service/setting_test.go`. Defaults now initialize through DB-level idempotent inserts inside a transaction before readback; existing values and the returned settings shape are preserved. Frontend, dependencies, DB schema/migrations, API contract, `Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests and `tests/chaos/**` не затрагивались.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue19|DefaultSetting|GetAllSetting" -count=10` | green | Issue19 concurrent default initialization anchor GREEN 10/10; default-setting anchors GREEN | [`post-fix-19/anchor-19-service.txt`](post-fix-19/anchor-19-service.txt) |
+| `go test ./service -race -run "Issue19|DefaultSetting|GetAllSetting" -count=5` | green | race anchor GREEN 5/5 | [`post-fix-19/anchor-19-service-race.txt`](post-fix-19/anchor-19-service-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-19/build.txt`](post-fix-19/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-19/vet.txt`](post-fix-19/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-19/test.txt`](post-fix-19/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-19/test-race.txt`](post-fix-19/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-19/gosec.txt`](post-fix-19/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-19/govulncheck.txt`](post-fix-19/govulncheck.txt) |
+
+### Дельта
+
+- П. 19 «SettingService.GetAllSetting startup race» — closed. `GetAllSetting` now calls `ensureDefaultSettings` before final readback; defaults are inserted with one-statement `INSERT ... SELECT ... WHERE NOT EXISTS` operations inside a DB transaction, sorted for deterministic order.
+- Package-local Issue19 anchor empties the file-backed SQLite settings table after `InitDB`, starts 16 concurrent callers behind a barrier, verifies no errors, asserts `len(defaultValueMap)` rows, and checks no duplicate keys.
+- The returned settings contract is unchanged: `secret`, `installSalt`, `sessionGeneration`, `config`, and `version` remain omitted, while normal defaults such as `webPort` are still returned.
+- No frontend/dependency/schema/API contract changes were made; blacklist paths were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-19
+
+`pre-fix-19-head.txt`, `pre-fix-19-status.txt`, `post-fix-19-status.txt`, `status-diff.txt`, `anchor-19-service.txt`, `anchor-19-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
