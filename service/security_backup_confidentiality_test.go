@@ -74,6 +74,41 @@ func TestSecurityConfigChangeRedactsTelegramBackupPassphrase(t *testing.T) {
 	}
 }
 
-func TestSecurityTelegramBackupZeroizationOnError_XFAILPhase4(t *testing.T) {
-	t.Skip("XFAIL Phase4: RunOnce zeroization is implemented with defers, but no production hook exposes buffers for deterministic post-error assertion")
+func TestSecurityTelegramBackupSecretBagZeroizationIssue25(t *testing.T) {
+	payload := []byte("SQLite format 3\x00sensitive payload")
+	passphrase := []byte("correct horse battery staple")
+	bag := telegramBackupSecretBag{}
+
+	bag.setPayload(payload)
+	bag.setPassphrase(passphrase)
+	bag.zeroPassphrase()
+	assertZeroedBytes(t, "passphrase", passphrase)
+	if bag.passphrase != nil {
+		t.Fatal("passphrase should be released from secret bag after zeroPassphrase")
+	}
+	if allBytesZero(payload) {
+		t.Fatal("payload should remain owned until payload zeroization")
+	}
+
+	bag.zero()
+	assertZeroedBytes(t, "payload", payload)
+	if bag.payload != nil {
+		t.Fatal("payload should be released from secret bag after zero")
+	}
+}
+
+func assertZeroedBytes(t *testing.T, label string, buf []byte) {
+	t.Helper()
+	if !allBytesZero(buf) {
+		t.Fatalf("%s was not zeroized: %q", label, string(buf))
+	}
+}
+
+func allBytesZero(buf []byte) bool {
+	for _, value := range buf {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
 }

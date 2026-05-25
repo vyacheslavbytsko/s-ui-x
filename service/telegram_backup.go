@@ -39,6 +39,36 @@ var telegramBackupSendDocument = func(s *TelegramService, filename string, paylo
 	return s.SendTelegramDocument(filename, payload, caption)
 }
 
+type telegramBackupSecretBag struct {
+	payload    []byte
+	passphrase []byte
+}
+
+func (b *telegramBackupSecretBag) setPayload(payload []byte) {
+	b.zeroPayload()
+	b.payload = payload
+}
+
+func (b *telegramBackupSecretBag) setPassphrase(passphrase []byte) {
+	b.zeroPassphrase()
+	b.passphrase = passphrase
+}
+
+func (b *telegramBackupSecretBag) zeroPayload() {
+	zeroBytes(b.payload)
+	b.payload = nil
+}
+
+func (b *telegramBackupSecretBag) zeroPassphrase() {
+	zeroBytes(b.passphrase)
+	b.passphrase = nil
+}
+
+func (b *telegramBackupSecretBag) zero() {
+	b.zeroPassphrase()
+	b.zeroPayload()
+}
+
 func ContextWithTelegramBackupActor(ctx context.Context, actor string) context.Context {
 	return context.WithValue(ctx, telegramBackupActorContextKey{}, actor)
 }
@@ -117,27 +147,30 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		result.ErrorClass = "db_snapshot_failed"
 		return result
 	}
-	result.PayloadSizeBytes = int64(len(payload))
-	defer zeroBytes(payload)
+	var secrets telegramBackupSecretBag
+	secrets.setPayload(payload)
+	payload = nil
+	defer secrets.zero()
+	result.PayloadSizeBytes = int64(len(secrets.payload))
 
 	passphrase, err := s.SettingService.GetTelegramBackupPassphraseBytes()
 	if err != nil {
 		result.ErrorClass = "settings"
 		return result
 	}
-	defer zeroBytes(passphrase)
-	if len(passphrase) == 0 {
+	secrets.setPassphrase(passphrase)
+	passphrase = nil
+	if len(secrets.passphrase) == 0 {
 		result.ErrorClass = "missing_passphrase"
 		return result
 	}
-	envelope, err := BuildTelegramBackupEnvelope(payload, passphrase)
-	zeroBytes(passphrase)
+	envelope, err := BuildTelegramBackupEnvelope(secrets.payload, secrets.passphrase)
+	secrets.zeroPassphrase()
 	if err != nil {
 		result.ErrorClass = "encryption_failed"
 		return result
 	}
-	zeroBytes(payload)
-	payload = nil
+	secrets.zeroPayload()
 	result.EnvelopeSizeBytes = int64(len(envelope))
 
 	maxBytes := int64(maxSizeMB) * 1024 * 1024

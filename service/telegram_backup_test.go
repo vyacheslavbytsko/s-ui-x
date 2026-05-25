@@ -96,7 +96,7 @@ func TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes(t *testing.T) {
 	}
 }
 
-func TestTelegramBackupRunOnceOversizeSkipsSend(t *testing.T) {
+func TestTelegramBackupRunOnceOversizeSkipsSendAndAuditRedactsIssue25(t *testing.T) {
 	passphrase := "correct horse battery staple"
 	settingService := initSettingTestDB(t)
 	configureTelegramBackupSettings(t, settingService, telegramBackupSettings{
@@ -121,6 +121,17 @@ func TestTelegramBackupRunOnceOversizeSkipsSend(t *testing.T) {
 	}
 	if result.PayloadSizeBytes == 0 || result.EnvelopeSizeBytes == 0 {
 		t.Fatalf("sizes were not recorded: %#v", result)
+	}
+	event := assertTelegramBackupAudit(t, "tg_backup_failed", "oversize", result.PayloadSizeBytes, result.EnvelopeSizeBytes)
+	details := string(event.Details)
+	for _, forbidden := range []string{
+		passphrase,
+		"123456:test-token",
+		"SQLite format 3",
+	} {
+		if strings.Contains(details, forbidden) {
+			t.Fatalf("oversize backup audit leaked %q in details: %s", forbidden, details)
+		}
 	}
 }
 
