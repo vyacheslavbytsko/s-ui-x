@@ -135,13 +135,13 @@ Coverage total: 42.1% statements, полный function report: [`phase2/coverag
 - `TestConsumeWSTokenTimingRegressionAnchor_XFAILIssue33`: skipped, blocked by issue 33 (timing-sensitive anchor включать после constant-time фикса).
 - `TestUserServiceLoginLockedDocumentedAtAPILayer`: skipped, потому что lockout находится в API rate-limit, а не в `UserService.Login`; production boundary не менялся.
 
-Current-behavior anchor без skip:
-- `TestApplyExtraWireguardNoPeersSkipCurrentSummary_XFAILIssue6`: фиксирует текущее поведение issue 6 — wireguard endpoint skip считается как `Inbounds.Skipped`, потому что `Endpoints.Skipped` в отчёте ещё нет.
+Post-fix anchor:
+- `TestIssue6ApplyWireguardNoPeersCountsEndpointSkip`: после singleton #6 wireguard endpoint skip считается как `Endpoints.Skipped`, а не `Inbounds.Skipped`; legacy `Import` path покрыт `TestIssue6ImportWireguardNoPeersCountsEndpointSkip`.
 
 ### Regression anchors по реестру
 
 - Issue 4: cron sync failed summary (`XFAIL`).
-- Issue 6: wireguard endpoint skip summary (current behavior anchor).
+- Issue 6: wireguard endpoint skip summary (post-fix Apply and Import anchors).
 - Issue 16: audit writer overflow/drop counter, batched flush, stop flush.
 - Issue 17: secretbox legacy fallback audit noise (`XFAIL`) и primary candidate no-audit green.
 - Issue 18: ipmonitor DB read error fail-closed (`XFAIL`).
@@ -1458,3 +1458,37 @@ Singleton #14 закрыл startup safety gap in `database/db.go`: `InitDB()` no
 ### Файлы post-fix-14
 
 `pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-database-issue14.txt`, `test-database-issue14-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #6 2026-05-26
+
+### Коммиты
+
+- `4e460241a99ca0de8af0aa3d633a4a502dc51234` — fix(importxui): count wireguard endpoint skips separately (registry #6)
+
+Singleton #6 закрыл import-xui reporting gap: wireguard no-peers endpoint skips now increment `summary.endpoints.skipped` and no longer inflate `summary.inbounds.skipped`. Audit and API summary details include `endpoints.skipped`.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./database/importxui -run "Issue6\|WireguardNoPeers\|Import_StrategySkip\|Plan\|Apply" -count=10` | passed | Issue6 Apply/Import endpoint-skip anchors passed 10/10; existing Plan/Apply anchors remain covered | [`post-fix-6/test-importxui-issue6.txt`](post-fix-6/test-importxui-issue6.txt) |
+| `go test ./database/importxui -race -run "Issue6\|WireguardNoPeers" -count=5` | passed | issue6 race anchors passed 5/5 | [`post-fix-6/test-importxui-issue6-race.txt`](post-fix-6/test-importxui-issue6-race.txt) |
+| `go test ./api -run "ImportXui.*Plan\|ImportXui.*Apply\|Issue37\|Issue39" -count=3` | passed | import-xui API plan/apply regressions remain green | [`post-fix-6/test-api-importxui.txt`](post-fix-6/test-api-importxui.txt) |
+| `go build ./...` | passed | без регрессии | [`post-fix-6/build-all.txt`](post-fix-6/build-all.txt) |
+| `go vet ./...` | passed | без регрессии | [`post-fix-6/vet-all.txt`](post-fix-6/vet-all.txt) |
+| `go test ./...` | passed | без регрессии | [`post-fix-6/test-all.txt`](post-fix-6/test-all.txt) |
+| `go test -race ./... -timeout 900s` | passed | без регрессии | [`post-fix-6/test-race-all.txt`](post-fix-6/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly `Issues : 55`; ANSI-tolerant count check used | [`post-fix-6/gosec.txt`](post-fix-6/gosec.txt) |
+| `govulncheck ./...` | passed | `No vulnerabilities found.` | [`post-fix-6/govulncheck.txt`](post-fix-6/govulncheck.txt) |
+
+### Дельта
+
+- П. 6 «wireguard endpoint skip summary» — closed. `EndpointSummary.Skipped` is reported in JSON, audit summary details, API audit details, and `formatImportSummary`.
+- `applyState.applyInboundsEndpoints()` counts wireguard no-peers and endpoint plan-skip cases under endpoint skips. Legacy `Import` counts wireguard no-peers under endpoint skips.
+- Current-behavior anchor was replaced with post-fix Apply and Import anchors that assert `Inbounds.Skipped == 0`, `Endpoints.Imported == 0`, `Endpoints.Skipped == 1`, and the no-peers warning.
+- No frontend/dependency/schema/model/migration changes were made; blacklist paths and dirty API lifecycle tests were untouched.
+- Blacklist diff from baseline `51916ee0e82247caf7e9c39ddac0cf72a2c41231` to the fix commit contains only allowed import-xui/API fix files.
+
+### Файлы post-fix-6
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-importxui-issue6.txt`, `test-importxui-issue6-race.txt`, `test-api-importxui.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.

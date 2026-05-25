@@ -39,6 +39,7 @@
 
 6. **P3 / Reporting correctness** — wireguard endpoint skip учтён как inbound‑skip в [`applyState.applyInboundsEndpoints()`](../../database/importxui/plan.go:528) на строке [`s.report.Summary.Inbounds.Skipped++`](../../database/importxui/plan.go:541).
    - Fix: отдельный счётчик endpoint skipped.
+   - Status 2026-05-26: closed by singleton #6; wireguard endpoint skips are now counted under `summary.endpoints.skipped` instead of `summary.inbounds.skipped`, including API/audit summary details.
 
 7. **P3 / Profile config drift** — `IncludeSettings/IncludeHistory/IncludeRouting/AdminMode` нельзя задать из профиля в cron‑синке: cron собирает `PlanOptions` без них в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90), хотя UI и API их поддерживают.
    - Fix: расширить модель профиля и пробросить флаги в Plan/Apply.
@@ -1295,3 +1296,24 @@ Singleton #14 закрыл fatal post-migration adapt gap in `database.InitDB()`
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #14 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-14/`.
+
+## Post-fix Singleton #6 2026-05-26
+
+### Коммиты
+
+- `4e460241a99ca0de8af0aa3d633a4a502dc51234` — fix(importxui): count wireguard endpoint skips separately (registry #6)
+
+Singleton #6 закрыл reporting correctness gap in import-xui: wireguard endpoint-layer skips no longer inflate `summary.inbounds.skipped`; the count is exposed as `summary.endpoints.skipped` in reports, audit details, and API audit details.
+
+### Дельта по реестру
+
+- П. 6 «wireguard endpoint skip summary» — closed. `EndpointSummary` now has `Skipped`; Apply no-peers and endpoint action-skip paths increment endpoint skips, and legacy `Import` no-peers increments the same counter.
+- Current-behavior anchor replaced by post-fix anchors `TestIssue6ApplyWireguardNoPeersCountsEndpointSkip` and `TestIssue6ImportWireguardNoPeersCountsEndpointSkip`.
+- `summaryDetails`, `summaryDetailsForAPI`, and text summaries include `endpoints.skipped`, so audit/API surfaces no longer drop endpoint skip counts.
+- No frontend/dependency/schema/model/migration changes were made; dirty lifecycle API tests and `docs/audit/start-prompt.md` were not edited, staged, or committed.
+- Blacklist diff from baseline `51916ee0e82247caf7e9c39ddac0cf72a2c41231` to the fix commit contains only the allowed fix files.
+- `gosec ./...` remains the known red baseline with exactly `Issues : 55`; `govulncheck ./...` reports `No vulnerabilities found.`
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #6 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-6/`.
