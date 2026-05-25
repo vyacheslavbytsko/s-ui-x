@@ -20,6 +20,7 @@ import (
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/importxui"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/service"
 
@@ -33,6 +34,10 @@ const (
 	xuiRequestMax     = 5
 	xuiRequestTimeout = 10 * time.Minute
 	xuiRateMaxEntries = 4096
+
+	xuiUploadTempPrefix          = "xui-import-"
+	xuiUploadTempMaxAge          = 24 * time.Hour
+	xuiUploadTempCleanupInterval = time.Hour
 )
 
 type xuiUpload struct {
@@ -59,6 +64,13 @@ func (e *xuiFieldTooLargeError) Error() string {
 var (
 	xuiRateMu sync.Mutex
 	xuiRates  = map[string]xuiAttempt{}
+
+	xuiUploadTempRoot = os.TempDir
+	xuiUploadNow      = time.Now
+	xuiUploadCleanup  = cleanupStaleXUIUploads
+
+	xuiUploadCleanupMu   sync.Mutex
+	xuiUploadLastCleanup time.Time
 )
 
 func init() {
@@ -319,7 +331,8 @@ func saveXUIUpload(c *gin.Context) (*xuiUpload, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir, err := os.MkdirTemp(os.TempDir(), "xui-import-*")
+	maybeCleanupStaleXUIUploads()
+	dir, err := os.MkdirTemp(xuiUploadTempRoot(), xuiUploadTempPrefix+"*")
 	if err != nil {
 		return nil, err
 	}
@@ -372,6 +385,60 @@ func saveXUIUpload(c *gin.Context) (*xuiUpload, error) {
 		return nil, errors.New("missing db file")
 	}
 	return upload, nil
+}
+
+func maybeCleanupStaleXUIUploads() {
+	root := xuiUploadTempRoot()
+	now := xuiUploadNow()
+
+	xuiUploadCleanupMu.Lock()
+	sinceLast := now.Sub(xuiUploadLastCleanup)
+	if !xuiUploadLastCleanup.IsZero() && sinceLast >= 0 && sinceLast < xuiUploadTempCleanupInterval {
+		xuiUploadCleanupMu.Unlock()
+		return
+	}
+	xuiUploadLastCleanup = now
+	xuiUploadCleanupMu.Unlock()
+
+	if err := xuiUploadCleanup(root, now, xuiUploadTempMaxAge); err != nil {
+		logger.Warning("xui import stale upload cleanup failed:", err)
+	}
+}
+
+func cleanupStaleXUIUploads(root string, now time.Time, maxAge time.Duration) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	var cleanupErrs []error
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, xuiUploadTempPrefix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			cleanupErrs = append(cleanupErrs, err)
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || now.Sub(info.ModTime()) <= maxAge {
+			continue
+		}
+		path := filepath.Join(root, name)
+		info, err = os.Lstat(path)
+		if err != nil {
+			cleanupErrs = append(cleanupErrs, err)
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || now.Sub(info.ModTime()) <= maxAge {
+			continue
+		}
+		// #nosec G304 -- path is constrained to entries read from the temp root with the xui-import prefix.
+		if err := os.RemoveAll(path); err != nil {
+			cleanupErrs = append(cleanupErrs, err)
+		}
+	}
+	return errors.Join(cleanupErrs...)
 }
 
 func readXUIField(part *multipart.Part, name string, limit int64) (string, error) {
