@@ -140,6 +140,27 @@ func TestXUISyncJobExtraFailureSummaryIncludesLastErrIssue4(t *testing.T) {
 	}
 }
 
+func TestXUISyncJobSuccessReturnsNilOnPersistFailureIssue41(t *testing.T) {
+	initCronJobTestDB(t)
+	profile := createXUISyncProfileForTest(t, createXUISyncSourceDB(t))
+
+	// Drop the table recordRun writes into so UpdateSyncProfileRun fails after
+	// runProfileOnce reaches its terminal success branch.
+	if err := database.GetDB().Migrator().DropTable("xui_sync_profiles"); err != nil {
+		t.Fatal(err)
+	}
+
+	job := &XUISyncJob{now: func() time.Time { return time.Unix(1700000400, 0) }}
+	if err := job.RunProfile(context.Background(), profile); err != nil {
+		t.Fatalf("RunProfile should return nil even when success persist fails, got %v", err)
+	}
+
+	var audit model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "xui_sync_run").First(&audit).Error; err != nil {
+		t.Fatalf("xui_sync_run audit should be persisted even when run-fields persist fails: %v", err)
+	}
+}
+
 func createXUISyncProfileForTest(t *testing.T, sourcePath string) *model.XUISyncProfile {
 	t.Helper()
 	profile, err := importxui.SaveSyncProfile(importxui.SyncProfileInput{

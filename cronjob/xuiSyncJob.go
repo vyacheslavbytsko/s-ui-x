@@ -75,7 +75,10 @@ func (j *XUISyncJob) RunProfile(ctx context.Context, profile *model.XUISyncProfi
 	for attempt := 1; attempt <= 3; attempt++ {
 		report, err := j.runProfileOnce(ctx, profile)
 		if err == nil {
-			return j.recordRun(profile, "success", report)
+			if err := j.recordRun(profile, "success", report); err != nil {
+				logger.Warning("xui-sync profile ", profile.Id, ": persist success run failed: ", err)
+			}
+			return nil
 		}
 		lastErr = err
 		if attempt < 3 {
