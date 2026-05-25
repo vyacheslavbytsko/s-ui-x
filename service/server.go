@@ -27,6 +27,8 @@ type ServerService struct {
 	Runtime *Runtime
 }
 
+var systemInfoInterfaces = net.Interfaces
+
 func (s *ServerService) runtime() *Runtime {
 	if s != nil {
 		return runtimeOrDefault(s.Runtime)
@@ -173,7 +175,7 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	info["appMem"] = rtm.Sys
 	info["appThreads"] = uint32(runtime.NumGoroutine())
 	cpuInfo, err := cpu.Info()
-	if err == nil {
+	if err == nil && len(cpuInfo) > 0 {
 		info["cpuType"] = cpuInfo[0].ModelName
 	}
 	info["cpuCount"] = runtime.NumCPU()
@@ -182,15 +184,20 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	ipv4 := make([]string, 0)
 	ipv6 := make([]string, 0)
 	// get ip address
-	netInterfaces, _ := net.Interfaces()
-	for i := 0; i < len(netInterfaces); i++ {
-		if len(netInterfaces[i].Flags) > 2 && netInterfaces[i].Flags[0] == "up" && netInterfaces[i].Flags[1] != "loopback" {
+	netInterfaces, err := systemInfoInterfaces()
+	if err != nil {
+		logger.Warning("get net interfaces failed:", err)
+	} else {
+		for i := 0; i < len(netInterfaces); i++ {
+			if !systemInterfaceUsable(netInterfaces[i].Flags) {
+				continue
+			}
 			addrs := netInterfaces[i].Addrs
 
 			for _, address := range addrs {
 				if strings.Contains(address.Addr, ".") {
 					ipv4 = append(ipv4, address.Addr)
-				} else if address.Addr[0:6] != "fe80::" {
+				} else if !strings.HasPrefix(strings.ToLower(address.Addr), "fe80::") {
 					ipv6 = append(ipv6, address.Addr)
 				}
 			}
@@ -201,6 +208,19 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	info["bootTime"], _ = host.BootTime()
 
 	return info
+}
+
+func systemInterfaceUsable(flags []string) bool {
+	up := false
+	for _, flag := range flags {
+		switch strings.ToLower(flag) {
+		case "up":
+			up = true
+		case "loopback":
+			return false
+		}
+	}
+	return up
 }
 
 const (
