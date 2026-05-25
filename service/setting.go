@@ -1030,12 +1030,12 @@ func validateOptionalJSONArray(value string, key string) error {
 }
 
 func validateOptionalHTTPURL(value string) error {
+	if containsControlCharacter(value) {
+		return common.NewError("invalid URL setting")
+	}
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil
-	}
-	if containsControlCharacter(value) {
-		return common.NewError("invalid URL setting")
 	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Host == "" {

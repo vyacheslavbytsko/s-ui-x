@@ -58,6 +58,16 @@ func TestValidateOptionalHTTPURLRejectsUnsafePartsIssue30(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "reject leading raw newline",
+			value:   "\nhttps://example.com/profile",
+			wantErr: true,
+		},
+		{
+			name:    "reject trailing raw CRLF and tab",
+			value:   "https://example.com/profile\r\n\t",
+			wantErr: true,
+		},
+		{
 			name:    "reject raw tab in path",
 			value:   "https://example.com/pro\tfile",
 			wantErr: true,
