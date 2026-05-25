@@ -69,12 +69,14 @@ func (s *UserService) UpdateFirstUser(username string, password string) error {
 	if database.IsNotFound(err) {
 		user.Username = username
 		user.Password = passwordHash
+		user.ForcePasswordReset = false
 		return db.Model(model.User{}).Create(user).Error
 	} else if err != nil {
 		return err
 	}
 	user.Username = username
 	user.Password = passwordHash
+	user.ForcePasswordReset = false
 	return db.Save(user).Error
 }
 
@@ -147,6 +149,7 @@ func (s *UserService) ChangePass(id string, oldPass string, newUser string, newP
 	}
 	user.Username = newUser
 	user.Password = passwordHash
+	user.ForcePasswordReset = false
 	return db.Save(user).Error
 }
 
@@ -155,7 +158,10 @@ func (s *UserService) updatePasswordHash(user *model.User, password string) erro
 	if err != nil {
 		return err
 	}
-	return database.GetDB().Model(model.User{}).Where("id = ?", user.Id).Update("password", passwordHash).Error
+	return database.GetDB().Model(model.User{}).Where("id = ?", user.Id).Updates(map[string]any{
+		"password":             passwordHash,
+		"force_password_reset": false,
+	}).Error
 }
 
 func (s *UserService) LoadTokens() ([]byte, error) {

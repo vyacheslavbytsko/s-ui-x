@@ -152,6 +152,32 @@ func TestIssue14InitDBReturnsAdaptError(t *testing.T) {
 	}
 }
 
+func TestIssue13InitDBCreatesForcePasswordResetDefaultFalse(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	if !GetDB().Migrator().HasColumn(&model.User{}, "force_password_reset") {
+		t.Fatal("users.force_password_reset column was not created")
+	}
+	var admin model.User
+	if err := GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if admin.ForcePasswordReset {
+		t.Fatalf("initial admin should not require reset: %#v", admin)
+	}
+}
+
 func TestIssue15DBPoolConfigFromEnv(t *testing.T) {
 	cases := []struct {
 		name        string

@@ -175,6 +175,13 @@ func TestApply_ImportsSettingsAndNewPasswordAdmins(t *testing.T) {
 	if len(report.GeneratedAdmins) == 0 || report.GeneratedAdmins[0].Password == "" {
 		t.Fatalf("new-password admin was not returned once in report: %#v", report.GeneratedAdmins)
 	}
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", report.GeneratedAdmins[0].Username).First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if admin.ForcePasswordReset {
+		t.Fatalf("new-password admin should not require reset: %#v", admin)
+	}
 }
 
 func findPlanItem(t *testing.T, plan *MigrationPlan, kind string, srcID any) PlanItem {

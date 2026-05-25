@@ -1,11 +1,13 @@
 package service
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/util/common"
 )
 
 func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
@@ -143,5 +145,103 @@ func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
 	}
 	if stored.Scope != defaultAPITokenScope {
 		t.Fatalf("legacy token scope not normalized: %#v", stored)
+	}
+}
+
+func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := userService.UpdateFirstUser("admin", "updated-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored model.User
+	if err := database.GetDB().Where("username = ?", "admin").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.ForcePasswordReset {
+		t.Fatalf("UpdateFirstUser should clear force reset: %#v", stored)
+	}
+	if ok, _ := common.CheckPassword(stored.Password, "updated-password"); !ok {
+		t.Fatal("updated password does not validate")
+	}
+}
+
+func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+	if err := userService.UpdateFirstUser("admin", "old-password"); err != nil {
+		t.Fatal(err)
+	}
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := userService.ChangePass(strconv.FormatUint(uint64(admin.Id), 10), "old-password", "admin-renamed", "new-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored model.User
+	if err := database.GetDB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Username != "admin-renamed" {
+		t.Fatalf("username was not changed: %#v", stored)
+	}
+	if stored.ForcePasswordReset {
+		t.Fatalf("ChangePass should clear force reset: %#v", stored)
+	}
+	if ok, _ := common.CheckPassword(stored.Password, "new-password"); !ok {
+		t.Fatal("new password does not validate")
+	}
+}
+
+func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+	prefixedHash, err := common.HashPassword("legacy-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawBcryptHash := strings.TrimPrefix(prefixedHash, "bcrypt:")
+	if rawBcryptHash == prefixedHash {
+		t.Fatal("test hash did not use bcrypt prefix")
+	}
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Updates(map[string]any{
+		"password":             rawBcryptHash,
+		"force_password_reset": true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := userService.Login("admin", "legacy-password", "203.0.113.20"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored model.User
+	if err := database.GetDB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.ForcePasswordReset {
+		t.Fatalf("password hash migration should clear force reset: %#v", stored)
+	}
+	if !strings.HasPrefix(stored.Password, "bcrypt:") {
+		t.Fatalf("password was not migrated to canonical hash: %q", stored.Password)
 	}
 }

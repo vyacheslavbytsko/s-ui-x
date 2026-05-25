@@ -67,6 +67,7 @@ type PlanItem struct {
 	DstTag      string          `json:"dstTag"`
 	Action      string          `json:"action"`
 	Conflict    bool            `json:"conflict"`
+	AdminMode   string          `json:"adminMode,omitempty"`
 	PreviewJSON json.RawMessage `json:"previewJson"`
 	Warnings    []string        `json:"warnings,omitempty"`
 }
@@ -679,15 +680,32 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB
 			continue
 		}
 		username := firstNonEmpty(item.DstTag, user.Username)
-		password := deterministicSeq(username+":admin:"+strconv.FormatInt(time.Now().UnixNano(), 10), 16)
-		hash, err := common.HashPassword(password)
-		if err != nil {
+		mode := AdminMode(firstNonEmpty(item.AdminMode, string(AdminModeNewPassword)))
+		if err := mode.Validate(); err != nil {
 			return err
 		}
-		if err := upsertUser(tx, username, hash, item.Action); err != nil {
-			return err
+		switch mode {
+		case AdminModeSkip:
+			continue
+		case AdminModeNewPassword:
+			password := deterministicSeq(username+":admin:"+strconv.FormatInt(time.Now().UnixNano(), 10), 16)
+			hash, err := common.HashPassword(password)
+			if err != nil {
+				return err
+			}
+			if err := upsertUserWithPassword(tx, username, hash, item.Action, false); err != nil {
+				return err
+			}
+			s.report.GeneratedAdmins = append(s.report.GeneratedAdmins, GeneratedAdmin{Username: username, Password: password})
+		case AdminModeResetRequired:
+			hash, err := sourceAdminPasswordHash(user.Password)
+			if err != nil {
+				return err
+			}
+			if err := upsertUserResetRequired(tx, username, hash, item.Action); err != nil {
+				return err
+			}
 		}
-		s.report.GeneratedAdmins = append(s.report.GeneratedAdmins, GeneratedAdmin{Username: username, Password: password})
 		s.progress("admins", username)
 	}
 	return nil
@@ -698,6 +716,9 @@ func normalizePlan(plan MigrationPlan) map[string]PlanItem {
 	for _, item := range plan.Items {
 		if item.Action == "" {
 			item.Action = ActionCreate
+		}
+		if item.Kind == KindAdmin && item.AdminMode == "" {
+			item.AdminMode = plan.Defaults.AdminMode
 		}
 		items[planKey(item.Kind, item.SrcID)] = item
 	}
@@ -915,25 +936,58 @@ func planAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *Migration
 			DstTag:      user.Username,
 			Action:      defaultAction(conflict, strategy),
 			Conflict:    conflict,
+			AdminMode:   string(mode),
 			PreviewJSON: previewJSON,
 		})
 	}
 	return nil
 }
 
-func upsertUser(tx *gorm.DB, username string, passwordHash string, action string) error {
+func sourceAdminPasswordHash(password string) (string, error) {
+	if common.IsPasswordHash(password) {
+		return password, nil
+	}
+	return common.HashPassword(password)
+}
+
+func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, action string, forcePasswordReset bool) error {
 	var user model.User
 	err := tx.Where("username = ?", username).First(&user).Error
 	if err != nil && !database.IsNotFound(err) {
 		return err
 	}
 	if database.IsNotFound(err) {
-		return tx.Create(&model.User{Username: username, Password: passwordHash}).Error
+		return tx.Create(&model.User{Username: username, Password: passwordHash, ForcePasswordReset: forcePasswordReset}).Error
 	}
 	if action == ActionSkip || action == "" {
 		return nil
 	}
-	return tx.Model(&user).Update("password", passwordHash).Error
+	return tx.Model(&user).Updates(map[string]any{
+		"password":             passwordHash,
+		"force_password_reset": forcePasswordReset,
+	}).Error
+}
+
+func upsertUserResetRequired(tx *gorm.DB, username string, sourcePasswordHash string, action string) error {
+	var user model.User
+	err := tx.Where("username = ?", username).First(&user).Error
+	if err != nil && !database.IsNotFound(err) {
+		return err
+	}
+	if database.IsNotFound(err) {
+		if action == ActionSkip || action == "" {
+			return nil
+		}
+		return tx.Create(&model.User{Username: username, Password: sourcePasswordHash, ForcePasswordReset: true}).Error
+	}
+	if action == ActionSkip || action == "" {
+		return nil
+	}
+	updates := map[string]any{"force_password_reset": true}
+	if action != ActionMerge {
+		updates["password"] = sourcePasswordHash
+	}
+	return tx.Model(&user).Updates(updates).Error
 }
 
 func recordAuditWithBackup(tx *gorm.DB, report *Report, opts ApplyOptions) error {

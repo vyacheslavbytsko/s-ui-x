@@ -16,10 +16,11 @@ type Tls struct {
 }
 
 type User struct {
-	Id         uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Username   string `json:"username" form:"username"`
-	Password   string `json:"password" form:"password"`
-	LastLogins string `json:"lastLogin"`
+	Id                 uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	Username           string `json:"username" form:"username"`
+	Password           string `json:"password" form:"password"`
+	LastLogins         string `json:"lastLogin"`
+	ForcePasswordReset bool   `json:"forcePasswordReset" form:"forcePasswordReset" gorm:"column:force_password_reset;default:false;not null"`
 }
 
 type Client struct {
