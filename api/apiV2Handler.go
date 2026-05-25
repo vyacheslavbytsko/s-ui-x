@@ -61,17 +61,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.POST("/telegram/test", a.ApiService.TestTelegram)
 	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
 	g.POST("/telegram/backup/run", a.ApiService.RunTelegramBackup)
-	g.POST("/import-xui/plan", a.ApiService.ImportXuiPlan)
-	g.POST("/import-xui/apply", a.ApiService.ImportXuiApply)
-	g.POST("/import-xui/rollback", a.ApiService.ImportXuiRollback)
-	g.GET("/import-xui/reports", a.ApiService.ImportXuiReports)
-	g.POST("/import-xui/remote/plan", a.ApiService.ImportXuiRemotePlan)
-	g.POST("/import-xui/remote/apply", a.ApiService.ImportXuiRemoteApply)
-	g.GET("/import-xui/remote/status", a.ApiService.XUIRemoteStatus)
-	g.GET("/import-xui/sync/profiles", a.ApiService.XUISyncProfiles)
-	g.POST("/import-xui/sync/profiles", a.ApiService.SaveXUISyncProfile)
-	g.POST("/import-xui/sync/run", a.ApiService.RunXUISyncProfile)
-	g.POST("/import-xui/sync/disable", a.ApiService.DisableXUISyncProfile)
+	registerImportXUIRoutes(g, &a.ApiService)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
@@ -93,8 +83,6 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 		a.ApiService.SubConvert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
-	case "import-xui":
-		a.ApiService.ImportXui(c)
 	case "rotateSubSecret":
 		a.ApiService.RotateSubSecret(c)
 	default:

@@ -2,8 +2,11 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,6 +35,15 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/linkConvert",
 			"/api/subConvert",
 			"/api/importdb",
+			"/api/import-xui",
+			"/api/import-xui/plan",
+			"/api/import-xui/apply",
+			"/api/import-xui/rollback",
+			"/api/import-xui/remote/plan",
+			"/api/import-xui/remote/apply",
+			"/api/import-xui/sync/profiles",
+			"/api/import-xui/sync/run",
+			"/api/import-xui/sync/disable",
 			"/api/addToken",
 			"/api/deleteToken",
 			"/api/setTokenEnabled",
@@ -67,6 +79,9 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/singbox-config",
 			"/api/checkOutbound",
 			"/api/version",
+			"/api/import-xui/reports",
+			"/api/import-xui/remote/status",
+			"/api/import-xui/sync/profiles",
 			"/api/security/audit",
 			"/api/realtime/ws-token",
 			"/api/realtime/ws",
@@ -82,5 +97,36 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 				t.Fatalf("missing explicit route %s %s", method, path)
 			}
 		}
+	}
+}
+
+func TestImportXUIRoutesUseSharedRegistryIssue35(t *testing.T) {
+	initSessionTestDB(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
+	NewAPIHandler(router.Group("/api"), apiv2)
+
+	routes := map[string]gin.RouteInfo{}
+	for _, route := range router.Routes() {
+		routes[route.Method+" "+route.Path] = route
+	}
+
+	for _, spec := range importXUIRouteSpecs {
+		for _, prefix := range []string{"/api", "/apiv2"} {
+			key := spec.method + " " + prefix + spec.path
+			if _, ok := routes[key]; !ok {
+				t.Fatalf("missing import-xui shared route %s", key)
+			}
+		}
+	}
+
+	route, ok := routes[http.MethodPost+" /apiv2/import-xui"]
+	if !ok {
+		t.Fatal("missing explicit POST /apiv2/import-xui route")
+	}
+	if strings.Contains(route.Handler, "postHandler") {
+		t.Fatalf("POST /apiv2/import-xui is still handled by generic postHandler: %s", route.Handler)
 	}
 }

@@ -166,7 +166,7 @@ func TestSecurityAuthZAPIV2HTTPAuthStatus_XFAILPhase4(t *testing.T) {
 	t.Skip("XFAIL Phase4: APIv2 invalid/expired token currently returns HTTP 200 success=false; desired contract is 401/403, see docs/audit/security/authz-matrix.md")
 }
 
-func TestSecurityAuthZImportXUIDuplicateRouteContractAnchor(t *testing.T) {
+func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfacesIssue35(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -179,8 +179,8 @@ func TestSecurityAuthZImportXUIDuplicateRouteContractAnchor(t *testing.T) {
 	v2 := httptest.NewRecorder()
 	router.ServeHTTP(v2, httptest.NewRequest(http.MethodPost, "/apiv2/import-xui/plan", strings.NewReader("")))
 
-	if v1.Code == v2.Code && v1.Body.String() == v2.Body.String() {
-		t.Fatalf("duplicated import-xui routes unexpectedly have identical unauthenticated contract: status=%d body=%s", v1.Code, v1.Body.String())
+	if v1.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("unexpected v1 unauthenticated session surface: status=%d body=%s", v1.Code, v1.Body.String())
 	}
 	if v2.Code != http.StatusOK || !strings.Contains(v2.Body.String(), "invalid token") {
 		t.Fatalf("unexpected v2 unauthenticated contract: status=%d body=%s", v2.Code, v2.Body.String())
