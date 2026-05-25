@@ -140,6 +140,7 @@
 
 35. **P2 / Concurrency / route registration** — в [`api/apiV2Handler.initRouter()`](../../api/apiV2Handler.go:48) и [`api/apiHandler.registerGroupedRoutes()`](../../api/apiHandler.go:35) дублируются маршруты `/import-xui/*`. Контракт расходится тонко.
     - Fix: единый источник истины для `import-xui` маршрутов.
+    - Status 2026-05-25: closed by singleton #35; `/api` and `/apiv2` import-xui routes now register from a shared route spec, including explicit `POST /apiv2/import-xui`, while preserving distinct session/CSRF vs token auth surfaces.
 
 36. **P2 / DoS** — [`enforceXUIRateLimit()`](../../api/import_xui.go:266) держит rate‑state в `xuiRates` map; ключ под анонимом — IP, нет верхней границы на размер мапы.
     - Fix: bounded map (LRU).
@@ -1101,3 +1102,21 @@ Singleton #34 закрыл enforcement gap для legacy API token header: `Auth
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #34 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-34/`.
+
+## Post-fix Singleton #35 2026-05-25
+
+### Коммиты
+
+- `f97a993c18c6a39b044031be79e88c55494fe7d5` — fix(api/routes): share import-xui route registration (registry #35)
+
+Singleton #35 закрыл route drift risk для import-xui endpoints: v1 `/api` and v2 `/apiv2` now use one package-local route registry. Auth middleware semantics are unchanged; the fix only centralizes endpoint registration.
+
+### Дельта по реестру
+
+- П. 35 «duplicate import-xui route registration» — closed. Issue35 anchor verifies every shared route exists under both `/api` and `/apiv2`, and `POST /apiv2/import-xui` is explicit rather than catch-all driven.
+- Existing v1/v2 auth-surface distinction remains covered by updated security authz anchor.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #35 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-35/`.

@@ -1123,3 +1123,36 @@ Singleton #34 закрыл enforcement gap в legacy API token header одним
 ### Файлы post-fix-34
 
 `pre-fix-34-head.txt`, `pre-fix-34-status.txt`, `post-fix-34-status.txt`, `status-diff.txt`, `anchor-34-api.txt`, `anchor-34-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #35 2026-05-25
+
+### Коммиты
+
+- `f97a993c18c6a39b044031be79e88c55494fe7d5` — fix(api/routes): share import-xui route registration (registry #35)
+
+Singleton #35 закрыл route drift risk для import-xui endpoints одним production-коммитом в `api/apiHandler.go`, `api/apiV2Handler.go`, `api/import_xui_routes.go`, `api/apiHandler_routes_test.go` и `api/security_authz_test.go`. v1 `/api` and v2 `/apiv2` now register the same package-local route spec, including explicit `POST /apiv2/import-xui`; session/CSRF and token middleware surfaces remain distinct.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue35|ImportXUIRoutes|ImportXUIDuplicateRoute|APIHandlerRegistersLegacyActionRoutesExplicitly|SecurityAuthZScopeMatrixRows" -count=10` | green | Issue35 shared-registry anchor GREEN 10/10; legacy route list and authz matrix anchors GREEN | [`post-fix-35/anchor-35-api.txt`](post-fix-35/anchor-35-api.txt) |
+| `go test ./api -race -run "Issue35|ImportXUIRoutes|SecurityAuthZScopeMatrixRows" -count=5` | green | race anchors GREEN 5/5 | [`post-fix-35/anchor-35-api-race.txt`](post-fix-35/anchor-35-api-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-35/build.txt`](post-fix-35/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-35/vet.txt`](post-fix-35/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-35/test.txt`](post-fix-35/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-35/test-race.txt`](post-fix-35/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-35/gosec.txt`](post-fix-35/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-35/govulncheck.txt`](post-fix-35/govulncheck.txt) |
+
+### Дельта
+
+- П. 35 «duplicate import-xui route registration» — closed. `importXUIRouteSpecs` is the single source for all twelve import-xui routes and is used by both `APIHandler.registerGroupedRoutes()` and `APIv2Handler.initRouter()`.
+- `POST /apiv2/import-xui` is explicitly registered from the shared registry; the generic `postHandler` no longer owns the `import-xui` case.
+- Existing v1/v2 auth-surface distinction remains covered: unauthenticated `/api/import-xui/plan` still hits the session surface, while unauthenticated `/apiv2/import-xui/plan` keeps the current HTTP 200 `invalid token` contract.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-35
+
+`pre-fix-35-head.txt`, `pre-fix-35-status.txt`, `post-fix-35-status.txt`, `status-diff.txt`, `anchor-35-api.txt`, `anchor-35-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
