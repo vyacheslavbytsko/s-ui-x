@@ -305,7 +305,7 @@ func TestTelegramStatusErrorClassAllowlist(t *testing.T) {
 	}
 }
 
-func TestTelegramNotifierUsesRetryAfterFrom429Response(t *testing.T) {
+func TestTelegramSendParsesRetryAfterFrom429Response(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	enableTelegramForTest(t, settingService)
 
@@ -332,22 +332,13 @@ func TestTelegramNotifierUsesRetryAfterFrom429Response(t *testing.T) {
 	})
 	defer restoreClient()
 
-	var slept []time.Duration
-	oldSleep := telegramSleep
-	telegramSleep = func(delay time.Duration) {
-		slept = append(slept, delay)
-	}
-	defer func() { telegramSleep = oldSleep }()
+	result := (&TelegramService{}).send("message")
 
-	notifier := newTelegramNotifier(1, (&TelegramService{}).send, nil)
-	notifier.backoff = []time.Duration{time.Hour}
-	notifier.deliver(telegramNotification{event: "rate_limited", text: "message"})
-
-	if requests.Load() != 2 {
-		t.Fatalf("expected retry after 429, got %d requests", requests.Load())
+	if requests.Load() != 1 {
+		t.Fatalf("expected one telegram request, got %d", requests.Load())
 	}
-	if len(slept) != 1 || slept[0] != time.Second {
-		t.Fatalf("unexpected retry sleep durations: %#v", slept)
+	if result.Success || result.ErrorClass != "rate_limited" || result.RetryAfter != time.Second {
+		t.Fatalf("unexpected retry-after result: %#v", result)
 	}
 }
 
@@ -467,6 +458,35 @@ func TestTelegramNotifierRetriesAndAuditsFailure(t *testing.T) {
 	}
 	if _, ok := record.details["text"]; ok {
 		t.Fatalf("message text leaked to audit details: %#v", record.details)
+	}
+}
+
+func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
+	firstSend := make(chan struct{})
+	var attempts atomic.Int32
+	var firstOnce sync.Once
+	notifier := newTelegramNotifier(1, func(string) TelegramResult {
+		if attempts.Add(1) == 1 {
+			firstOnce.Do(func() { close(firstSend) })
+		}
+		return TelegramResult{ErrorClass: "network"}
+	}, nil)
+	notifier.backoff = []time.Duration{time.Hour}
+
+	notifier.Enqueue(telegramNotification{event: "issue22", text: "message"})
+	waitForTestChannel(t, firstSend, time.Second, "first telegram send did not start")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := notifier.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("Stop did not cancel notifier backoff quickly; elapsed=%s", elapsed)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("Stop should prevent a retry after backoff cancellation, got %d sends", got)
 	}
 }
 

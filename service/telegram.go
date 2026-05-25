@@ -72,13 +72,16 @@ type telegramNotifier struct {
 	send     func(string) TelegramResult
 	audit    func(string, map[string]any)
 	backoff  []time.Duration
+	stopCh   chan struct{}
+	stopOnce sync.Once
 
-	mu      sync.Mutex
-	cond    *sync.Cond
-	queue   []telegramNotification
-	done    chan struct{}
-	started bool
-	stopped bool
+	mu       sync.Mutex
+	cond     *sync.Cond
+	queue    []telegramNotification
+	done     chan struct{}
+	doneOnce sync.Once
+	started  bool
+	stopped  bool
 }
 
 func newTelegramNotifier(capacity int, send func(string) TelegramResult, audit func(string, map[string]any)) *telegramNotifier {
@@ -93,8 +96,9 @@ func newTelegramNotifier(capacity int, send func(string) TelegramResult, audit f
 			500 * time.Millisecond,
 			2 * time.Second,
 		},
-		queue: make([]telegramNotification, 0, capacity),
-		done:  make(chan struct{}),
+		queue:  make([]telegramNotification, 0, capacity),
+		done:   make(chan struct{}),
+		stopCh: make(chan struct{}),
 	}
 	notifier.cond = sync.NewCond(&notifier.mu)
 	return notifier
@@ -183,7 +187,7 @@ func (n *telegramNotifier) next() (telegramNotification, bool) {
 }
 
 func (n *telegramNotifier) run() {
-	defer close(n.done)
+	defer n.closeDone()
 	for {
 		job, ok := n.next()
 		if !ok {
@@ -206,7 +210,9 @@ func (n *telegramNotifier) deliver(job telegramNotification) {
 			if result.RetryAfter > 0 {
 				delay = result.RetryAfter
 			}
-			telegramSleep(delay)
+			if !n.sleepBackoff(delay) {
+				return
+			}
 		}
 	}
 	if result.ErrorClass == "" {
@@ -228,19 +234,53 @@ func (n *telegramNotifier) recordAudit(event string, details map[string]any) {
 	n.audit(event, details)
 }
 
+func (n *telegramNotifier) sleepBackoff(delay time.Duration) bool {
+	if delay <= 0 {
+		select {
+		case <-n.stopCh:
+			return false
+		default:
+			return true
+		}
+	}
+	timer := time.NewTimer(delay)
+	select {
+	case <-timer.C:
+		return true
+	case <-n.stopCh:
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		return false
+	}
+}
+
+func (n *telegramNotifier) closeStopCh() {
+	n.stopOnce.Do(func() {
+		close(n.stopCh)
+	})
+}
+
+func (n *telegramNotifier) closeDone() {
+	n.doneOnce.Do(func() {
+		close(n.done)
+	})
+}
+
 func (n *telegramNotifier) Stop(ctx context.Context) error {
 	n.mu.Lock()
-	if !n.started {
-		n.stopped = true
-		n.mu.Unlock()
-		return nil
-	}
-	if !n.stopped {
-		n.stopped = true
-		n.cond.Broadcast()
-	}
+	n.stopped = true
+	n.cond.Broadcast()
+	started := n.started
 	done := n.done
 	n.mu.Unlock()
+	n.closeStopCh()
+	if !started {
+		n.closeDone()
+	}
 
 	select {
 	case <-done:
