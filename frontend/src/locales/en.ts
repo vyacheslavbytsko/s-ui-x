@@ -229,6 +229,10 @@ export default {
     rollbackHealthTimeout: "Restore finished, but the panel did not become ready in time. Refresh manually after checking the service.",
     generatedAdmins: "Generated admins",
     passwordShownOnce: "These passwords are shown once and are not stored in audit.",
+    passwordsHidden: "Generated passwords are hidden until you reveal them.",
+    revealGeneratedAdmins: "Reveal passwords",
+    hideGeneratedAdmins: "Hide passwords",
+    clearGeneratedAdmins: "Clear passwords",
     actions: {
       create: "Create",
       merge: "Merge",

@@ -229,6 +229,10 @@ export default {
     rollbackHealthTimeout: "Восстановление завершено, но панель не стала готова вовремя. Обновите страницу вручную после проверки сервиса.",
     generatedAdmins: "Созданные администраторы",
     passwordShownOnce: "Эти пароли показываются один раз и не сохраняются в аудит.",
+    passwordsHidden: "Созданные пароли скрыты до явного показа.",
+    revealGeneratedAdmins: "Показать пароли",
+    hideGeneratedAdmins: "Скрыть пароли",
+    clearGeneratedAdmins: "Очистить пароли",
     actions: {
       create: "Создать",
       merge: "Объединить",

@@ -140,5 +140,69 @@ test('Issue44 waits for rollback database health before reload', async ({ page }
 // XFAIL: пункт 45 реестра; generated admin password должен быть скрыт до явного reveal.
 test.skip('generated admin password is shown once via reveal pattern, not raw JSON in DOM', async () => {})
 
+test('Issue45 hides generated admin passwords until reveal and auto-clears them', async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeSetTimeout = window.setTimeout
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
+      const adjusted = typeof timeout === 'number' && timeout >= 60000 ? 1500 : timeout
+      return nativeSetTimeout(handler, adjusted, ...args)
+    }) as typeof window.setTimeout
+  })
+  await mockAuthenticatedShell(page)
+  await page.route('**/api/import-xui/plan', async route => route.fulfill({
+    json: {
+      success: true,
+      msg: '',
+      obj: {
+        source: { hash: 'issue45-hash' },
+        defaults: {},
+        items: [
+          {
+            kind: 'admin',
+            srcId: '1',
+            srcTag: 'migrated-admin',
+            dstTag: 'migrated-admin',
+            action: 'create',
+            conflict: false,
+            previewJson: { username: 'migrated-admin' },
+          },
+        ],
+      },
+    },
+  }))
+  await page.route('**/api/import-xui/apply', async route => route.fulfill({
+    json: {
+      success: true,
+      msg: '',
+      obj: {
+        backupPath: 's-ui-pre-xui-import-test.db',
+        summary: { admins: { created: 1 } },
+        generatedAdmins: [
+          { username: 'migrated-admin', password: 'issue45-secret-password' },
+        ],
+      },
+    },
+  }))
+
+  await page.goto('migrate-xui')
+  await expect(page).toHaveURL(/\/migrate-xui$/)
+  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'x-ui.db',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('SQLite format 3\0'),
+  })
+  await page.getByRole('button', { name: 'Build plan' }).click()
+  await page.getByRole('button', { name: 'Apply plan' }).click()
+  await expect(page.getByText('Migration result')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('issue45-secret-password')
+  await expect(page.getByTestId('migrate-xui-generated-admins-hidden')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reveal passwords' }).click()
+  await expect(page.locator('body')).toContainText('issue45-secret-password')
+  await expect(page.locator('body')).not.toContainText('issue45-secret-password', { timeout: 5000 })
+  await expect(page.getByTestId('migrate-xui-generated-admins')).toBeHidden()
+})
+
 // XFAIL: пункт 46 реестра; reset_required пока не имеет backend force-reset semantics.
 test.skip('adminMode reset_required is disabled or warns until backend contract exists', async () => {})

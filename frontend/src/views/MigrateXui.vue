@@ -298,10 +298,29 @@
                 </ul>
               </v-alert>
             </v-col>
-            <v-col v-if="report?.generatedAdmins?.length" cols="12">
-              <v-alert type="info" variant="tonal" :title="$t('migrateXui.generatedAdmins')">
+            <v-col v-if="hasGeneratedAdmins" cols="12">
+              <v-alert type="info" variant="tonal" :title="$t('migrateXui.generatedAdmins')" data-testid="migrate-xui-generated-admins">
                 <div class="mb-2">{{ $t('migrateXui.passwordShownOnce') }}</div>
-                <pre class="preview-json">{{ JSON.stringify(report.generatedAdmins, null, 2) }}</pre>
+                <div v-if="!generatedAdminsRevealed" class="text-body-2 mb-2" data-testid="migrate-xui-generated-admins-hidden">
+                  {{ $t('migrateXui.passwordsHidden') }}
+                </div>
+                <v-row class="mb-2" density="compact">
+                  <v-col cols="auto">
+                    <v-btn
+                      variant="tonal"
+                      :prepend-icon="generatedAdminsRevealed ? 'mdi-eye-off' : 'mdi-eye'"
+                      @click="generatedAdminsRevealed = !generatedAdminsRevealed"
+                    >
+                      {{ generatedAdminsRevealed ? $t('migrateXui.hideGeneratedAdmins') : $t('migrateXui.revealGeneratedAdmins') }}
+                    </v-btn>
+                  </v-col>
+                  <v-col cols="auto">
+                    <v-btn variant="tonal" prepend-icon="mdi-delete-outline" @click="clearGeneratedAdmins">
+                      {{ $t('migrateXui.clearGeneratedAdmins') }}
+                    </v-btn>
+                  </v-col>
+                </v-row>
+                <pre v-if="generatedAdminsRevealed" class="preview-json" data-testid="migrate-xui-generated-admins-json">{{ generatedAdminsText }}</pre>
               </v-alert>
             </v-col>
           </v-row>
@@ -335,6 +354,8 @@ type MigrationPlan = {
   defaults: Record<string, any>
 }
 
+const generatedAdminsAutoClearMs = 5 * 60 * 1000
+
 export default {
   data() {
     return {
@@ -355,6 +376,8 @@ export default {
       progress: null as any,
       applyError: '',
       rollbackError: '',
+      generatedAdminsRevealed: false,
+      generatedAdminsClearTimer: undefined as ReturnType<typeof setTimeout> | undefined,
     }
   },
   computed: {
@@ -422,6 +445,15 @@ export default {
     summaryText(): string {
       return JSON.stringify(this.report?.summary ?? {}, null, 2)
     },
+    generatedAdmins(): any[] {
+      return Array.isArray(this.report?.generatedAdmins) ? this.report.generatedAdmins : []
+    },
+    hasGeneratedAdmins(): boolean {
+      return this.generatedAdmins.length > 0
+    },
+    generatedAdminsText(): string {
+      return JSON.stringify(this.generatedAdmins, null, 2)
+    },
   },
   watch: {
     wsProgress(value: any) {
@@ -432,6 +464,9 @@ export default {
   },
   mounted() {
     Ws().connect()
+  },
+  beforeUnmount() {
+    this.clearGeneratedAdminsTimer()
   },
   methods: {
     async buildPlan() {
@@ -454,6 +489,8 @@ export default {
         rowKey: `${item.kind}:${String(item.srcId)}:${index}`,
       }))
       this.plan = plan
+      this.clearGeneratedAdminsTimer()
+      this.generatedAdminsRevealed = false
       this.report = null
       this.progress = null
       this.maxStep = Math.max(this.maxStep, 2)
@@ -476,6 +513,8 @@ export default {
         return
       }
       this.report = msg.obj
+      this.generatedAdminsRevealed = false
+      this.scheduleGeneratedAdminsClear()
       this.progress = { step: 'done', current: this.selectedCount, total: Math.max(this.selectedCount, 1), percent: 100 }
       this.maxStep = 4
       this.step = 4
@@ -518,6 +557,26 @@ export default {
         await new Promise(resolve => setTimeout(resolve, intervalMs))
       }
       return false
+    },
+    clearGeneratedAdminsTimer() {
+      if (this.generatedAdminsClearTimer) {
+        clearTimeout(this.generatedAdminsClearTimer)
+        this.generatedAdminsClearTimer = undefined
+      }
+    },
+    scheduleGeneratedAdminsClear() {
+      this.clearGeneratedAdminsTimer()
+      if (!this.hasGeneratedAdmins) return
+      this.generatedAdminsClearTimer = setTimeout(() => {
+        this.clearGeneratedAdmins()
+      }, generatedAdminsAutoClearMs)
+    },
+    clearGeneratedAdmins() {
+      this.clearGeneratedAdminsTimer()
+      if (this.report) {
+        this.report.generatedAdmins = []
+      }
+      this.generatedAdminsRevealed = false
     },
     setImport(item: PlanItem, enabled: boolean) {
       item.action = enabled ? (item.conflict ? this.strategy : 'create') : 'skip'
