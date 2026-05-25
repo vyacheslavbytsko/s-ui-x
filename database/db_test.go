@@ -123,6 +123,33 @@ VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 2, 2)
 	}
 }
 
+func TestIssue14InitDBReturnsAdaptError(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	sentinel := errors.New("issue14 adapt failure")
+
+	previousAdapt := adaptToCurrentVersion
+	adaptToCurrentVersion = func() error {
+		return sentinel
+	}
+	t.Cleanup(func() {
+		adaptToCurrentVersion = previousAdapt
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	err := InitDB(dbPath)
+	if err != nil && strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+		t.Skip(err)
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("InitDB error = %v, want sentinel adapt error", err)
+	}
+	if !strings.Contains(err.Error(), "post-migration adapt failed") {
+		t.Fatalf("InitDB error = %q, want post-migration adapt context", err)
+	}
+}
+
 func TestOpenDBEnablesSQLiteForeignKeys(t *testing.T) {
 	dbDir := t.TempDir()
 	dbPath := filepath.Join(dbDir, "s-ui.db")

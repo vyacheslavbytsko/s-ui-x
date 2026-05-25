@@ -2,6 +2,7 @@ package database
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/deposist/s-ui-x/config"
 	"github.com/deposist/s-ui-x/database/model"
-	suilog "github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/util/common"
 
 	"gorm.io/driver/sqlite"
@@ -18,6 +18,7 @@ import (
 )
 
 var db *gorm.DB
+var adaptToCurrentVersion = AdaptToCurrentVersion
 
 func initUser(dbPath string) error {
 	var count int64
@@ -137,12 +138,11 @@ func InitDB(dbPath string) error {
 	if err != nil {
 		return err
 	}
-	// Best-effort post-migration adaptation: rehash legacy plaintext
-	// passwords from older S-UI versions, refresh indexes and the
-	// settings.version pointer. Failures here should not prevent startup,
-	// they are surfaced through the application log.
-	if err := AdaptToCurrentVersion(); err != nil {
-		suilog.Warning("post-migration adapt failed:", err)
+	// Post-migration adaptation is part of startup safety: indexes, legacy
+	// password rehashes and the settings.version pointer must be current
+	// before the panel serves traffic.
+	if err := adaptToCurrentVersion(); err != nil {
+		return fmt.Errorf("post-migration adapt failed: %w", err)
 	}
 
 	return nil
