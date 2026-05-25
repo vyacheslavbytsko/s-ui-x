@@ -32,6 +32,7 @@ const (
 	xuiRequestWindow  = time.Minute
 	xuiRequestMax     = 5
 	xuiRequestTimeout = 10 * time.Minute
+	xuiRateMaxEntries = 4096
 )
 
 type xuiUpload struct {
@@ -68,6 +69,28 @@ func resetXUIRateLimitCache() {
 	xuiRateMu.Lock()
 	defer xuiRateMu.Unlock()
 	xuiRates = map[string]xuiAttempt{}
+}
+
+func pruneXUIRateLimitLocked(now time.Time) {
+	for key, attempt := range xuiRates {
+		if attempt.WindowAt.IsZero() || now.Sub(attempt.WindowAt) >= xuiRequestWindow {
+			delete(xuiRates, key)
+		}
+	}
+	for len(xuiRates) >= xuiRateMaxEntries {
+		oldestKey := ""
+		var oldest time.Time
+		for key, attempt := range xuiRates {
+			if oldestKey == "" || attempt.WindowAt.Before(oldest) {
+				oldestKey = key
+				oldest = attempt.WindowAt
+			}
+		}
+		if oldestKey == "" {
+			return
+		}
+		delete(xuiRates, oldestKey)
+	}
 }
 
 func (a *ApiService) ImportXui(c *gin.Context) {
@@ -271,7 +294,11 @@ func (a *ApiService) enforceXUIRateLimit(c *gin.Context) bool {
 	xuiRateMu.Lock()
 	defer xuiRateMu.Unlock()
 	now := time.Now()
-	attempt := xuiRates[key]
+	attempt, exists := xuiRates[key]
+	if !exists && len(xuiRates) >= xuiRateMaxEntries {
+		pruneXUIRateLimitLocked(now)
+		attempt = xuiRates[key]
+	}
 	if attempt.WindowAt.IsZero() || now.Sub(attempt.WindowAt) >= xuiRequestWindow {
 		attempt = xuiAttempt{WindowAt: now}
 	}
