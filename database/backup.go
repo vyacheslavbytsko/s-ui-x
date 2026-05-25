@@ -416,7 +416,8 @@ func validateVersionedBackupConfig(probe *gorm.DB) error {
 		return common.NewErrorf("Error checking db config: %v", err)
 	}
 	if configRows == 0 {
-		return common.NewError("Invalid db backup: versioned S-UI database is missing settings.config")
+		logger.Warning("versioned S-UI backup is missing settings.config; legacy or partial backup, restore will continue")
+		return nil
 	}
 	return nil
 }
