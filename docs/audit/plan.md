@@ -69,6 +69,7 @@
     - Status 2026-05-26: closed by singleton #14; `InitDB` now returns a wrapped error when post-migration adapt fails, so startup does not continue with missing indexes, unhashed legacy passwords, or a stale version pointer.
 
 15. **P3 / DB pool** — [`OpenDB()`](../../database/db.go:53) фиксированно ставит `SetMaxOpenConns(8)`/`SetMaxIdleConns(4)`. Не настраивается.
+    - Status 2026-05-26: closed by singleton #15; SQLite pool limits now default to the historical 8/4 values but can be overridden with `SUI_DB_MAX_OPEN_CONNS` and `SUI_DB_MAX_IDLE_CONNS`.
 
 ### 1.3. Сервисный слой
 
@@ -1317,3 +1318,24 @@ Singleton #6 закрыл reporting correctness gap in import-xui: wireguard end
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #6 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-6/`.
+
+## Post-fix Singleton #15 2026-05-26
+
+### Коммиты
+
+- `9faaa2b6d9d69ce03ecd0a6aebf3218e259e5276` — fix(database): make sqlite pool configurable (registry #15)
+
+Singleton #15 закрыл DB pool configurability gap in `database.OpenDB()`: SQLite keeps the historical 8 open / 4 idle defaults and 1h connection lifetime, while deployments can override pool limits through environment variables.
+
+### Дельта по реестру
+
+- П. 15 «DB pool» — closed. `OpenDB` now applies `resolvedDBPoolConfig()` through a small pool setter helper instead of hard-coded `SetMaxOpenConns(8)` / `SetMaxIdleConns(4)`.
+- `SUI_DB_MAX_OPEN_CONNS` accepts positive integers; unset, empty, invalid, zero or negative values fall back to 8. `SUI_DB_MAX_IDLE_CONNS` accepts zero and positive integers; unset, empty, invalid or negative values fall back to 4.
+- `max_idle > max_open` is clamped before applying the settings, so effective SQLite pool limits do not depend on hidden `database/sql` adjustment.
+- No schema/model/migration/frontend/dependency changes were made; dirty API lifecycle tests, `docs/audit/start-prompt.md`, `Endpoint.vue`, Go module files, package manifests, frontend files and `tests/chaos/**` were not edited, staged or committed.
+- Blacklist diff from baseline `67e75214c557de55456a7f15486489a0107efba4` to the fix commit contains only `database/db.go` and `database/db_test.go`; docs/artifacts commit adds only the whitelisted audit files.
+- `gosec ./...` remains the known red baseline with exactly `Issues : 55` by ANSI-tolerant count check; `govulncheck ./...` reports `No vulnerabilities found.`
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #15 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-15/`.

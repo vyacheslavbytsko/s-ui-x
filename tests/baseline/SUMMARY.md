@@ -1492,3 +1492,37 @@ Singleton #6 закрыл import-xui reporting gap: wireguard no-peers endpoint 
 ### Файлы post-fix-6
 
 `pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-importxui-issue6.txt`, `test-importxui-issue6-race.txt`, `test-api-importxui.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #15 2026-05-26
+
+### Коммиты
+
+- `9faaa2b6d9d69ce03ecd0a6aebf3218e259e5276` — fix(database): make sqlite pool configurable (registry #15)
+
+Singleton #15 закрыл configurability gap in `database.OpenDB()`: SQLite pool limits keep historical defaults of 8 open / 4 idle connections and a 1h connection lifetime, with `SUI_DB_MAX_OPEN_CONNS` and `SUI_DB_MAX_IDLE_CONNS` overrides for deployment/load profiles.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./database -run "Issue15|OpenDB|InitDB|Issue14" -count=10` | passed | Issue15 env/default/clamp/apply/OpenDB anchors passed 10/10; existing OpenDB/InitDB/Issue14 anchors remain covered | [`post-fix-15/test-database-issue15.txt`](post-fix-15/test-database-issue15.txt) |
+| `go test ./database -race -run "Issue15|OpenDB" -count=5` | passed | Issue15/OpenDB race anchors passed 5/5 | [`post-fix-15/test-database-issue15-race.txt`](post-fix-15/test-database-issue15-race.txt) |
+| `go build ./...` | passed | без регрессии | [`post-fix-15/build-all.txt`](post-fix-15/build-all.txt) |
+| `go vet ./...` | passed | без регрессии | [`post-fix-15/vet-all.txt`](post-fix-15/vet-all.txt) |
+| `go test ./...` | passed | без регрессии | [`post-fix-15/test-all.txt`](post-fix-15/test-all.txt) |
+| `go test -race ./... -timeout 900s` | passed | без регрессии | [`post-fix-15/test-race-all.txt`](post-fix-15/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly `Issues : 55`; ANSI-tolerant count check used | [`post-fix-15/gosec.txt`](post-fix-15/gosec.txt) |
+| `govulncheck ./...` | passed | `No vulnerabilities found.` | [`post-fix-15/govulncheck.txt`](post-fix-15/govulncheck.txt) |
+
+### Дельта
+
+- П. 15 «DB pool» — closed. `OpenDB()` now applies `resolvedDBPoolConfig()` through `applyDBPoolConfig()` rather than hard-coded pool setters.
+- `SUI_DB_MAX_OPEN_CONNS` accepts positive integers; unset, empty, invalid, zero and negative values fall back to 8. `SUI_DB_MAX_IDLE_CONNS` accepts zero and positive integers; unset, empty, invalid and negative values fall back to 4.
+- `max_idle > max_open` clamps to `max_open` before applying to `database/sql`, and `SetConnMaxLifetime(time.Hour)` remains unchanged.
+- No schema/model/migration/frontend/dependency changes were made; blacklist paths and dirty API lifecycle tests were untouched.
+- Blacklist diff from baseline `67e75214c557de55456a7f15486489a0107efba4` to the fix commit contains only `database/db.go` and `database/db_test.go`.
+- `gosec` remains the known red baseline with exactly 55 issues; `govulncheck` reports no vulnerabilities.
+
+### Файлы post-fix-15
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-database-issue15.txt`, `test-database-issue15-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
