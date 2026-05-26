@@ -1,68 +1,159 @@
-# S-UI v1.5.5-beta4
+# S-UI v1.5.5-beta4 — отчёт об устранении проблем и фиксации технического долга
 
-Prerelease focused on runtime stability, data safety, security hardening,
-3x-ui import correctness and smoother admin workflows.
+Ниже представлен самодостаточный обзор исправлений, вошедших в `v1.5.5-beta4`.
+Изменения сгруппированы по логическим блокам: для каждой группы описана суть
+закрытых проблем и влияние исправлений на работу панели.
 
-## Highlights
+---
 
-- Runtime stability: Telegram client refresh, notifier retry timers, core
-  restart cooldowns and token-use flushing are synchronized to avoid data races
-  during load, restarts and database lifecycle changes.
-- Security and confidentiality: WebSocket token consumption is hardened against
-  timing leaks, the legacy `Token` API header now has an enforced Sunset,
-  system info hides private/link-local addresses, Telegram backup secrets are
-  zeroed in memory, and optional URL settings reject unsafe input.
-- Data integrity: startup default insertion is idempotent, migration/adapt
-  failures stop startup, TLS delete/read/commit failures are surfaced, and
-  backup/restore is more tolerant of slow disks and older unusual databases.
-- 3x-ui import and cron sync: `reset_required` is durable through
-  `users.force_password_reset`, sync profiles now honor saved import policies,
-  large apply plans stream from temp storage, stale import temp directories are
-  cleaned up, and rollback publishes realtime invalidation.
-- Admin UI: MigrateXui keeps apply errors visible, waits for rollback health
-  before reload and hides generated admin passwords until explicit reveal.
-  Endpoint save now blocks double-submit attempts and clears loading state after
-  failed saves.
+## 1. Безопасность, аутентификация и аудит
 
-## Packaging
+* **Принудительный сброс пароля при импорте**
+  * **Суть проблемы:** интерфейс предлагал режим `reset_required` при миграции
+    администраторов из x-ui, но backend не имел отдельного durable-состояния
+    для обязательной смены пароля и фактически уходил в сценарий генерации
+    нового пароля.
+  * **Влияние:** в модель пользователя добавлено состояние
+    `force_password_reset`, API-контракт синхронизирован с интерфейсом, а
+    импортированные администраторы с `reset_required` должны сменить пароль
+    перед нормальной работой в панели. Временный пароль больше не генерируется
+    и не попадает в отчёт импорта для этого режима.
+* **Защита токенов от атак и устаревания**
+  * **Суть проблемы:** WebSocket-токены проверялись с измеримой разницей во
+    времени, устаревший заголовок авторизации `Token` не имел жёсткой даты
+    отключения, а миграция legacy API-токенов могла включить ранее отключённые
+    токены.
+  * **Влияние:** потребление WebSocket-токенов переведено на безопасный
+    match-and-delete путь, legacy `Token` header получает отказ после Sunset,
+    а миграция старых токенов сохраняет их исходный enabled/disabled статус.
+* **Защита от утечек системных данных**
+  * **Суть проблемы:** системная информация могла раскрывать private и
+    link-local IP-адреса сервера, секреты Telegram backup требовали более
+    явного владения памятью, а сгенерированные admin-пароли в MigrateXui были
+    слишком легко видимы на экране.
+  * **Влияние:** внутренние IP фильтруются из ответа system info, payload и
+    passphrase Telegram backup зануляются после использования, а generated
+    admin passwords скрыты до явного reveal и автоматически очищаются.
+* **Приоритезация и качество аудита**
+  * **Суть проблемы:** при переполнении audit queue важные warn/security
+    события могли вытесняться обычными `info`, успешная legacy-расшифровка
+    создавала лишний audit noise, ошибки сохранения статистики не оставляли
+    полноценного следа, а URL-настройки принимали опасные управляющие символы.
+  * **Влияние:** audit writer теперь сохраняет приоритет warning/security
+    событий, лишний secretbox fallback noise убран, failures при commit
+    статистики фиксируются в audit, а optional URL settings отклоняют control
+    characters и небезопасные формы ввода.
 
-- Version metadata and Release, Windows and Docker workflow defaults now target
-  `v1.5.5-beta4`.
+---
+
+## 2. Импорт, синхронизация X-UI и интерфейс
+
+* **Точное следование настройкам пользователя**
+  * **Суть проблемы:** фоновая cron-синхронизация с X-UI использовала
+    жёстко заданные правила и могла игнорировать пользовательские поля профиля:
+    `OnlyNew`, импорт настроек, истории, routing и режим обработки
+    администраторов.
+  * **Влияние:** scheduler backend теперь передаёт сохранённую import policy в
+    планирование и применение импорта, поэтому cron sync исполняет настройки,
+    выбранные администратором.
+* **Работа с крупными импортами**
+  * **Суть проблемы:** JSON-план миграции читался как обычное multipart-поле с
+    лимитом 8 MiB, из-за чего крупные панели нельзя было применить тем же
+    контрактом. Оборванные загрузки также могли оставлять временные директории
+    на диске.
+  * **Влияние:** multipart-поле `plan` теперь читается потоково из временного
+    хранилища под общим лимитом запроса 200 MiB, что снижает memory pressure и
+    позволяет применять большие планы. Старые `xui-import-*` temp directories
+    очищаются автоматически по безопасному возрастному правилу.
+* **Изоляция и точность импорта**
+  * **Суть проблемы:** ошибка удаления старых TLS-записей в replace-сценарии
+    могла быть проигнорирована перед созданием новых записей, а пропущенные
+    WireGuard endpoints попадали в счётчик skipped inbounds.
+  * **Влияние:** ошибки удаления TLS теперь прерывают транзакцию и приводят к
+    безопасному rollback, а отчёт импорта получил корректный отдельный счётчик
+    skipped endpoints.
+* **UX восстановления и откатов**
+  * **Суть проблемы:** ошибки apply могли возвращать пользователя на прошлый
+    шаг без понятного объяснения, rollback ждал фиксированную секунду перед
+    reload, а другие активные сессии не получали realtime-сигнал об изменении
+    конфигурации.
+  * **Влияние:** MigrateXui показывает apply error inline, rollback ждёт
+    подтверждения health-check перед reload, а backend публикует
+    `config_invalidated` после успешного rollback.
+
+---
+
+## 3. База данных, резервное копирование и отказоустойчивость
+
+* **Защита backup и процесса миграции БД**
+  * **Суть проблемы:** SIGHUP timeout был жёстко зафиксирован на 3 секундах,
+    WAL checkpoint мог фатально сорвать backup на заблокированной SQLite DB,
+    отсутствие `settings.config` полностью блокировало versioned restore, а
+    ошибки post-migration adapt при запуске оставались warning-only.
+  * **Влияние:** timeout вынесен в env-настройку, WAL checkpoint получил
+    fallback `TRUNCATE -> FULL`, backup без `settings.config` восстанавливается
+    с предупреждением, а повреждённый post-migration adapt теперь останавливает
+    startup вместо продолжения с потенциально неконсистентной схемой.
+* **Масштабируемость БД и гонки при старте**
+  * **Суть проблемы:** SQLite pool имел фиксированные лимиты, а параллельный
+    first-start мог создать дубликаты настроек по умолчанию.
+  * **Влияние:** добавлены env-переменные для настройки SQLite pool, а default
+    settings создаются через DB-level idempotent insert path, исключающий
+    дубликаты при конкурентном старте.
+* **Отказоустойчивость IP-монитора**
+  * **Суть проблемы:** transient DB read error в IP-monitor path мог привести к
+    пропуску неизвестного адреса в enforce-mode.
+  * **Влияние:** при ошибке чтения `client_ips` cache entry считается
+    недостоверным, и enforcement переходит в fail-closed поведение.
+
+---
+
+## 4. Сеть, гонки данных и стабильность ядра
+
+* **Защита от OOM и самовосстановление realtime**
+  * **Суть проблемы:** import-xui rate-limit state мог расти без верхней
+    границы при потоке запросов с уникальных IP, а после сетевого сбоя frontend
+    мог навсегда остаться в degraded polling mode.
+  * **Влияние:** rate-limit cache получил bounded eviction и очистку expired
+    buckets, а WebSocket runtime теперь выполняет healing reconnect attempts из
+    fallback-режима.
+* **Устранение data races**
+  * **Суть проблемы:** конкурентный доступ к таймерам перезапуска ядра,
+    Telegram HTTP client и token-use flush мог приводить к race detector
+    failures, паникам или записи через устаревший DB handle.
+  * **Влияние:** критичные участки защищены mutex/single-flight/barrier
+    механизмами, а token-use flush lifecycle синхронизирован с DB reset и API
+    test lifecycle.
+* **Умные повторы и защита от штормов**
+  * **Суть проблемы:** cron sync использовал слишком короткие fixed retries,
+    token-use write failures не имели backoff circuit, update-check ходил на
+    GitHub без ETag, причины ошибок sync терялись, а WARP auth headers были
+    хрупко распределены по коду.
+  * **Влияние:** retry-политики получили exponential backoff, token-use flush
+    получил circuit breaker, release checks используют `If-None-Match`,
+    sync-fail summaries включают sanitized error class/detail, а WARP
+    authorized headers централизованы.
+* **Работа с IPv6 и единый API route registry**
+  * **Суть проблемы:** system info path мог паниковать на коротких interface
+    flags/address данных, включая нестандартные IPv6-only окружения, а
+    import-xui routes расходились между v1 и v2 API.
+  * **Влияние:** сетевые интерфейсы проверяются по содержимому и длине данных,
+    а import-xui endpoints регистрируются из общего route spec для `/api` и
+    `/apiv2`.
+
+---
 
 ## Validation
 
-- `go build ./...` - PASS
-- `go vet ./...` - PASS
-- `go test ./...` - PASS
-- `go test -race ./... -timeout 900s` - PASS
-- `govulncheck ./...` - PASS, no vulnerabilities found
-- `gosec ./...` remains the known classified baseline with 55 issues
+* `go build ./...` — PASS
+* `go vet ./...` — PASS
+* `go test ./...` — PASS
+* `go test -race ./... -timeout 900s` — PASS
+* `govulncheck ./...` — PASS, no vulnerabilities found
+* `gosec ./...` — known classified baseline, 55 issues
 
 ## Install
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta4
 ```
-
-## Русский
-
-Предрелиз про стабильность runtime, безопасность, целостность данных, корректный
-импорт 3x-ui и более спокойный admin workflow.
-
-- Синхронизированы Telegram client refresh, retry-таймеры notifier, cooldown
-  перезапуска ядра и token-use flush, чтобы убрать гонки при нагрузке,
-  рестартах и переинициализации БД.
-- Усилены токены и приватность: WS-token consumption защищён от timing leaks,
-  legacy `Token` header получил enforced Sunset, system info скрывает
-  private/link-local адреса, секреты Telegram backup зануляются в памяти, а
-  optional URL settings отбрасывают unsafe input.
-- Улучшена целостность данных: дефолтные settings вставляются идемпотентно,
-  ошибки migration/adapt останавливают startup, тихие DB/read/commit ошибки
-  стали видимыми, backup/restore устойчивее к медленным дискам и старым БД.
-- 3x-ui import и cron sync теперь исполняют сохранённые политики:
-  `reset_required` хранится через `users.force_password_reset`, большие
-  apply-планы читаются потоково, stale temp import directories очищаются, а
-  rollback публикует realtime invalidation.
-- MigrateXui показывает apply errors inline, ждёт health после rollback и
-  скрывает сгенерированные admin-пароли до явного reveal. Endpoint save
-  защищён от double-submit и корректно сбрасывает loading state после ошибки.
