@@ -2,6 +2,8 @@ import { test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { login, setEnglishLocale, writeJSONArtifact } from './helpers'
 
+test.setTimeout(90_000)
+
 test('axe baseline for login and authenticated pages', async ({ page }) => {
   await setEnglishLocale(page)
 

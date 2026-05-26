@@ -92,6 +92,14 @@ test('websocket survives repeated offline/online chaos and returns to connected'
   await expect.poll(async () => page.evaluate(() => (window as any).__SUI_WS_STATE__), {
     timeout: 10_000,
   }).toBe('connected')
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined)
+
+  const setFakeWsOnline = async (online: boolean) => {
+    await page.evaluate((nextOnline) => {
+      ;(window as any).__SUI_FAKE_WS_ONLINE__ = nextOnline
+      if (!nextOnline) (window as any).__SUI_FAKE_WS_CLOSE_ALL__?.()
+    }, online)
+  }
 
   const sequence: Array<{ offline: boolean; waitMs: number }> = [
     { offline: true, waitMs: 250 },
@@ -108,18 +116,18 @@ test('websocket survives repeated offline/online chaos and returns to connected'
 
   const log: string[] = []
   for (const [index, step] of sequence.entries()) {
-    await context.setOffline(step.offline)
-    await page.evaluate((offline) => {
-      ;(window as any).__SUI_FAKE_WS_ONLINE__ = !offline
-      if (offline) (window as any).__SUI_FAKE_WS_CLOSE_ALL__?.()
-    }, step.offline)
+    if (step.offline) {
+      await setFakeWsOnline(false)
+      await context.setOffline(true)
+    } else {
+      await context.setOffline(false)
+      await setFakeWsOnline(true)
+    }
     log.push(`${index + 1}: offline=${step.offline} waitMs=${step.waitMs}`)
     await page.waitForTimeout(step.waitMs)
   }
   await context.setOffline(false)
-  await page.evaluate(() => {
-    ;(window as any).__SUI_FAKE_WS_ONLINE__ = true
-  })
+  await setFakeWsOnline(true)
   await testInfo.attach('ws-reconnect-chaos-sequence.txt', {
     body: log.join('\n'),
     contentType: 'text/plain',

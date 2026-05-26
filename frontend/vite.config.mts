@@ -6,6 +6,8 @@ import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
+const isE2E = process.env.SUI_E2E === '1'
+
 export default defineConfig({
   base: '',
   plugins: [
@@ -36,6 +38,9 @@ export default defineConfig({
     }
   },
   define: { 'process.env': {} },
+  optimizeDeps: {
+    exclude: ['vuetify', 'vuetify/components', 'vuetify/directives'],
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -43,6 +48,7 @@ export default defineConfig({
     extensions: ['.js', '.json', '.jsx', '.mjs', '.ts', '.tsx', '.vue'],
   },
   server: {
+    hmr: isE2E ? false : undefined,
     port: 3000,
     proxy: {
       '/app/api': {

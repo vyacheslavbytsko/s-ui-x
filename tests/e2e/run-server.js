@@ -95,7 +95,10 @@ const main = async () => {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   spawnLogged('frontend', npmCommand, ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '3000', '--strictPort'], {
     cwd: frontendDir,
-    env: process.env,
+    env: {
+      ...process.env,
+      SUI_E2E: '1',
+    },
     shell: process.platform === 'win32',
   })
   await waitForURL('http://127.0.0.1:3000/app/login', 120000)
