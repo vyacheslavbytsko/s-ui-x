@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/service"
 
 	"github.com/gin-contrib/sessions"
@@ -60,5 +63,23 @@ func withTestTokenScope(username string, scope string, handler gin.HandlerFunc) 
 		c.Set(apiUsernameKey, username)
 		c.Set(apiTokenScopeKey, scope)
 		handler(c)
+	}
+}
+
+func stopTokenUseDebouncerBeforeAPITestDBInit(tb testing.TB) {
+	tb.Helper()
+	if err := service.StopTokenUseDebouncer(context.Background()); err != nil {
+		tb.Logf("token use debouncer stop before test DB init failed: %v", err)
+	}
+}
+
+func initAPITestDB(tb testing.TB, dbPath string) {
+	tb.Helper()
+	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
+	if err := database.InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			tb.Skip(err)
+		}
+		tb.Fatal(err)
 	}
 }

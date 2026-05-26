@@ -1,12 +1,15 @@
 package service
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/deposist/s-ui-x/core"
+	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 )
 
 const defaultCoreStartCooldown = 15 * time.Second
@@ -198,15 +201,14 @@ func (r *Runtime) resetTokenUseDebouncer() {
 	if r == nil {
 		return
 	}
+	finishReset := beginTokenUseReset()
+	defer finishReset()
 	r.mu.Lock()
-	if r.tokenUse != nil {
-		r.tokenUse.mu.Lock()
-		r.tokenUse.epoch++
-		if r.tokenUse.timer != nil {
-			r.tokenUse.timer.Stop()
-			r.tokenUse.timer = nil
+	current := r.tokenUse
+	if current != nil {
+		if err := current.flushNow(context.Background(), true); err != nil {
+			logger.Warning("token use flush before reset failed:", err)
 		}
-		r.tokenUse.mu.Unlock()
 	}
 	r.tokenUse = newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates)
 	r.mu.Unlock()
@@ -258,6 +260,12 @@ var (
 	defaultRuntimeMu sync.RWMutex
 	defaultRuntime   = NewRuntimeWithCoreProvider(nil)
 )
+
+func init() {
+	database.RegisterResetHook("service.token_use_debouncer", func() {
+		DefaultRuntime().resetTokenUseDebouncer()
+	})
+}
 
 func DefaultRuntime() *Runtime {
 	defaultRuntimeMu.RLock()

@@ -7,6 +7,18 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.5-beta4] - 2026-05-26 - audit hardening and release cleanup
+
+- Closed the 48-item audit registry with focused fixes across import-xui,
+  cron sync, backup safety, realtime, token flushing, Telegram/WARP,
+  server-info filtering, API validation and MigrateXui UX.
+- Implemented durable `reset_required` import semantics through
+  `users.force_password_reset`, persisted sync-profile import policy fields,
+  and aligned frontend schedule/profile payloads with the backend contract.
+- Added the final audit closure note and release cleanup for local scratch
+  artifacts; Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.5-beta4`.
+
 ## [1.5.5-beta3] - 2026-05-22 - backup config restore safety for DNS and routing
 
 - Config saves now recreate a missing `settings.config` row, and restore rejects

@@ -1,6 +1,6 @@
 {
   "name": "s-ui-frontend",
-  "version": "1.5.5-beta3",
+  "version": "1.5.5-beta4",
   "private": true,
   "scripts": {
     "dev": "vite --host",
@@ -30,13 +30,17 @@
     "yaml": "^2.8.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@babel/types": "^7.29.0",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.5.0",
     "@vitejs/plugin-vue": "^6.0.5",
+    "axe-core": "^4.11.4",
     "eslint": "^10.3.0",
     "eslint-plugin-vue": "^10.8.0",
     "material-design-icons-iconfont": "^6.7.0",
+    "playwright": "^1.60.0",
     "sass": "^1.98.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.3",

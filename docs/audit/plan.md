@@ -1043,12 +1043,12 @@ Cluster H закрыл MigrateXui UX пункты 43, 44, 45. Backend contract, 
 
 - `5bcef1ac4658bfa27986e9aec27771030739507e` — fix(service/server): harden system info interface parsing (registry #23)
 
-Singleton #23 закрыл crash-risk в `ServerService.GetSystemInfo()` при коротких flags/address данных. #24 confidentiality filtering не менялся и остаётся open.
+Singleton #23 закрыл crash-risk в `ServerService.GetSystemInfo()` при коротких flags/address данных. Historical note: #24 confidentiality filtering was out of scope here and is now closed by singleton #24.
 
 ### Дельта по реестру
 
 - П. 23 «GetSystemInfo IPv6-only crash» — closed. Interface flags теперь проверяются по содержимому, а не по позициям; короткие/пустые addresses больше не panic'ят. Package-local Issue23 anchor GREEN 10/10.
-- П. 24 «GetSystemInfo confidentiality» — unchanged/open; private address filtering не входил в singleton #23.
+- П. 24 «GetSystemInfo confidentiality» — unchanged in this singleton; private address filtering was closed later by singleton #24.
 
 ### Команды и логи
 
@@ -1360,7 +1360,7 @@ Singleton #42 был duplicate pointer to #32 in the frontend WS registry sectio
 
 - П. 42 «WS — см. п. 32» — closed by reference to Cluster D / #32.
 - Production code, frontend code, dependencies, `tests/chaos/**`, DB schema/model/migration files and dirty API lifecycle files were not modified for this cleanup.
-- Remaining open registry items are Cluster E contract work: #2, #3, #7, #8, #46, with related schema/test coverage items #13 and #9 requiring the same approval path.
+- Historical note: this docs-only cleanup predated Cluster E. The referenced contract work is now closed by Cluster E below.
 
 ### Команды и логи
 
@@ -1390,3 +1390,11 @@ Cluster E закрыл xui-import contract drift: `reset_required` теперь 
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster E 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-E/`.
+
+## Final Audit Closure 2026-05-26
+
+The audit registry is closed: 48/48 items in section 1 have explicit closed
+status lines. Older post-fix sections may still describe what remained pending
+at that historical checkpoint, but those notes are superseded by later singleton,
+cluster and Cluster E sections. For release triage, treat the section 1
+registry and this final closure note as the current state of record.

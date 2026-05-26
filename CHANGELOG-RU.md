@@ -7,6 +7,18 @@
 
 ## Unreleased
 
+## [1.5.5-beta4] — 2026-05-26 — audit hardening и release cleanup
+
+- Закрыт реестр аудита из 48 пунктов: import-xui, cron sync, backup safety,
+  realtime, token flushing, Telegram/WARP, server-info filtering, API
+  validation и MigrateXui UX.
+- `reset_required` получил durable-семантику через
+  `users.force_password_reset`; sync profiles теперь сохраняют import policy
+  fields, а frontend schedule/profile payloads совпадают с backend contract.
+- Добавлена финальная audit closure note и cleanup локальных scratch
+  artifacts; default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.5-beta4`.
+
 ## [1.5.5-beta3] — 2026-05-22 — безопасность restore backup config для DNS и routing
 
 - Сохранение config теперь пересоздаёт отсутствующую строку

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,14 +24,10 @@ func initSessionTestDB(t *testing.T) *service.SettingService {
 	service.AuditSyncForTest = true
 	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
-		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	initAPITestDB(t, filepath.Join(t.TempDir(), "s-ui.db"))
 	testDB := database.GetDB()
 	t.Cleanup(func() {
+		stopTokenUseDebouncerBeforeAPITestDBInit(t)
 		if testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {
 				_ = sqlDB.Close()

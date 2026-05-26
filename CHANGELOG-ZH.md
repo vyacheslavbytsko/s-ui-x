@@ -6,6 +6,17 @@
 
 ## 未发布
 
+## [1.5.5-beta4] - 2026-05-26 - 审计加固与发布清理
+
+- 关闭 48 项审计登记表，覆盖 import-xui、cron sync、backup safety、
+  realtime、token flushing、Telegram/WARP、server-info filtering、API
+  validation 与 MigrateXui UX。
+- `reset_required` 现在通过 `users.force_password_reset` 持久化；
+  sync profiles 会保存 import policy fields，frontend schedule/profile
+  payloads 也与 backend contract 对齐。
+- 新增最终 audit closure note，并清理本地 scratch artifacts；Release、
+  Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.5-beta4`。
+
 ## [1.5.5-beta3] - 2026-05-22 - DNS 与路由 backup config 的恢复安全性
 
 - 保存 config 时现在会补回缺失的 `settings.config` 行；restore 会拒绝已经

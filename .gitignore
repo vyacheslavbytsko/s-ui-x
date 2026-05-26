@@ -22,10 +22,19 @@ tmp
 # Windows build artifacts
 *.exe
 *.zip
+*.test.exe
 s-ui-windows/
 sui-*.exe
 sui-*.zip
 windows/sui-*.exe
+
+# Local audit/test scratch output
+test-results/
+verify-*.txt
+dc42e16-files.txt
+docs/audit/start-prompt.md
+tests/baseline/phase*/
+tests/baseline/phaseV/
 
 # Editor directories and files
 .idea

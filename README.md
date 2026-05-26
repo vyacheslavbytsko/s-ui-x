@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.5-beta3`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.5-beta4`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -42,6 +42,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.5-beta4` | Audit hardening prerelease: closes the 48-item audit registry, including import-xui contract fixes, cron/profile policy persistence, backup and realtime safety, token/Telegram/WARP robustness, API hardening and release CI cleanup. |
 | `1.5.5-beta3` | Backup config restore prerelease: preserves DNS and routing rules stored in `settings.config`, recreates the config row on save when missing, and rejects versioned S-UI backups that already lost it before swapping the live DB. |
 | `1.5.5-beta2` | Restore safety prerelease: keeps no-TLS inbounds foreign-key valid across backup export/restore and reopens the live database after rejected imports so sessions and cron jobs do not crash the panel. |
 | `1.5.5-beta1` | Subscription correctness prerelease: strips VLESS `xtls-rprx-vision` flow from non-TCP transports when a UUID is shared across inbounds and restores Clash WebSocket `Host` headers with TLS `server_name` fallback. |
@@ -139,10 +140,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.5-beta3 Prerelease
+## Install v1.5.5-beta4 Prerelease
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta4
 ```
 
 Or from a local clone:
@@ -150,7 +151,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.5-beta3
+sudo bash install.sh v1.5.5-beta4
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -259,6 +260,10 @@ docker build -t s-ui .
 ```
 
 </details>
+
+## How to read CI status
+
+The audit pipeline separates merge gates from known baseline debt. Required checks are `build`, `vet`, `test-go`, `fe-lint`, `fe-build`, and `fe-vitest`; soft checks such as race detector, gosec, govulncheck, staticcheck/golangci-lint, chaos, perf and flaky e2e are reported but should not block merge yet. Details: [`docs/audit/ci/required-checks.md`](docs/audit/ci/required-checks.md).
 
 ## Manual Run for Development and Contributions
 
@@ -379,7 +384,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.5-beta3`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.5-beta4`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -397,6 +402,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.5-beta4` | Audit hardening prerelease: закрывает реестр аудита из 48 пунктов, включая import-xui contract fixes, cron/profile policy persistence, backup/realtime safety, token/Telegram/WARP robustness, API hardening и release CI cleanup. |
 | `1.5.5-beta3` | Prerelease восстановления backup config: сохраняет DNS и routing rules из `settings.config`, пересоздаёт config row при сохранении, если она исчезла, и отклоняет versioned S-UI backup без неё до swap live DB. |
 | `1.5.5-beta2` | Prerelease безопасности restore: сохраняет foreign-key корректность no-TLS inbound при backup export/restore и переоткрывает live DB после отклонённого импорта, чтобы sessions и cron jobs не роняли панель. |
 | `1.5.5-beta1` | Prerelease корректности subscription: снимает VLESS `xtls-rprx-vision` flow с не-TCP транспортов при общем UUID на нескольких inbound и возвращает Clash WebSocket `Host` headers с fallback на TLS `server_name`. |
@@ -494,10 +500,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка prerelease v1.5.5-beta3
+## Установка prerelease v1.5.5-beta4
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta4
 ```
 
 Или из локального клона:
@@ -505,7 +511,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.5-beta3
+sudo bash install.sh v1.5.5-beta4
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,
@@ -614,6 +620,10 @@ docker build -t s-ui .
 ```
 
 </details>
+
+## Как читать CI status
+
+Audit-pipeline разделяет merge gates и известный baseline debt. Required checks: `build`, `vet`, `test-go`, `fe-lint`, `fe-build`, `fe-vitest`; soft checks вроде race detector, gosec, govulncheck, staticcheck/golangci-lint, chaos, perf и flaky e2e показываются в PR, но пока не должны блокировать merge. Подробнее: [`docs/audit/ci/required-checks.md`](docs/audit/ci/required-checks.md).
 
 ## Ручной запуск для разработки и участия в проекте
 

@@ -478,13 +478,9 @@ func setupXuiAPITestDB(t *testing.T) (*service.SettingService, string) {
 	t.Setenv("SUI_DB_FOLDER", dir)
 	copyAPIFixture(t, "s-ui.db", config.GetDBPath())
 	src := copyAPIFixture(t, "x-ui.db", filepath.Join(dir, "x-ui.db"))
-	if err := database.InitDB(config.GetDBPath()); err != nil {
-		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	initAPITestDB(t, config.GetDBPath())
 	t.Cleanup(func() {
+		stopTokenUseDebouncerBeforeAPITestDBInit(t)
 		if testDB := database.GetDB(); testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {
 				_ = sqlDB.Close()
@@ -635,6 +631,7 @@ func decodeReportResponse(t *testing.T, raw []byte) importxui.Report {
 
 func closeAPITestDB(t *testing.T) {
 	t.Helper()
+	stopTokenUseDebouncerBeforeAPITestDBInit(t)
 	if db := database.GetDB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
