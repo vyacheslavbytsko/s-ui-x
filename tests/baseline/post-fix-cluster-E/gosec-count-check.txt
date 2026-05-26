@@ -1,0 +1,1 @@
+gosec Issues : 55 (ANSI-stripped check passed)

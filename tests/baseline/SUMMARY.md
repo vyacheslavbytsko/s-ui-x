@@ -1551,3 +1551,48 @@ Singleton #42 was a duplicate frontend WS registry pointer to #32. Cluster D alr
 ### Файлы post-fix-42
 
 `pre-head.txt`, `pre-status.txt`, `cluster-d-reference.txt`.
+
+## Post-fix Cluster E 2026-05-26
+
+### Коммиты
+
+- `f38d9701f11c1ff72e0b6a87edbb6d51f9793a67` — fix(importxui): implement reset-required admin mode (registry #2 #8 #13)
+- `79703c7a9a4fd81a1c9c80abb3e1fbdb45777f75` — fix(cron): honor xui sync only-new policy (registry #3)
+- `ca6245fce987afcc3d36751c40a83d5cdc25cd98` — fix(cron): persist xui sync import policy options (registry #7)
+- `3a9aba2daea5ccb6e986397bf2f1db6858180786` — fix(frontend): align xui reset-required and sync profile UI (registry #46)
+
+Cluster E закрыл xui-import contract drift. `reset_required` больше не является UI-only режимом: import-xui планирует и применяет его как persisted auth state через `users.force_password_reset`, без генерации или возврата временного пароля. Cron sync теперь берет `OnlyNew`, include-флаги и `adminMode` из сохраненного sync profile, а frontend schedule UI отправляет те же поля.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./database ./database/importxui ./service -run "Issue2\|Issue8\|Issue13\|Issue9\|ResetRequired\|NewPasswordAdmins\|ChangePass\|UpdateFirstUser\|AutoMigrate\|Issue14\|Issue15" -count=10` | passed | reset_required durable-state/schema/service anchors passed 10/10 | [`post-fix-cluster-E/test-reset-required.txt`](post-fix-cluster-E/test-reset-required.txt) |
+| `go test ./database/importxui ./service -race -run "Issue2\|ResetRequired\|ChangePass\|UpdateFirstUser" -count=5` | passed | reset_required race anchors passed 5/5 | [`post-fix-cluster-E/test-reset-required-race.txt`](post-fix-cluster-E/test-reset-required-race.txt) |
+| `go test ./database/importxui ./cronjob ./cmd -run "Issue3\|OnlyNew\|XUISync\|SaveSyncProfile\|ImportXui" -count=10` | passed | omitted/default and explicit `onlyNew:false` anchors passed 10/10 | [`post-fix-cluster-E/test-only-new.txt`](post-fix-cluster-E/test-only-new.txt) |
+| `go test ./cronjob -race -run "Issue3\|OnlyNew\|XUISync" -count=5` | passed | only-new cron race anchors passed 5/5 | [`post-fix-cluster-E/test-only-new-race.txt`](post-fix-cluster-E/test-only-new-race.txt) |
+| `go test ./database/importxui ./cronjob ./api ./cmd/migration ./cmd -run "Issue7\|SyncProfile\|XUISync\|ImportXui\|To17\|Migration" -count=10` | passed | sync profile policy/API/migration anchors passed 10/10 | [`post-fix-cluster-E/test-sync-profile-policy.txt`](post-fix-cluster-E/test-sync-profile-policy.txt) |
+| `go test ./cronjob ./api -race -run "Issue7\|SyncProfile\|XUISync" -count=5` | passed | sync profile policy race anchors passed 5/5 | [`post-fix-cluster-E/test-sync-profile-policy-race.txt`](post-fix-cluster-E/test-sync-profile-policy-race.txt) |
+| `npm --prefix frontend run test -- --run src/locales/index.test.ts` | passed | frontend locale contract remains green | [`post-fix-cluster-E/frontend-vitest.txt`](post-fix-cluster-E/frontend-vitest.txt) |
+| `npx playwright test --config=playwright.config.ts tests/e2e/migrate-xui-happy.spec.ts --grep "Issue46\|sync profile"` | passed | Issue46 reset_required and sync profile payload anchors passed | [`post-fix-cluster-E/frontend-playwright-cluster-e.txt`](post-fix-cluster-E/frontend-playwright-cluster-e.txt) |
+| `go build ./...` | passed | без регрессии | [`post-fix-cluster-E/build-all.txt`](post-fix-cluster-E/build-all.txt) |
+| `go vet ./...` | passed | без регрессии | [`post-fix-cluster-E/vet-all.txt`](post-fix-cluster-E/vet-all.txt) |
+| `go test ./...` | passed | без регрессии | [`post-fix-cluster-E/test-all.txt`](post-fix-cluster-E/test-all.txt) |
+| `go test -race ./... -timeout 900s` | passed | без регрессии | [`post-fix-cluster-E/test-race-all.txt`](post-fix-cluster-E/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly `Issues : 55`; ANSI-stripped count check passed | [`post-fix-cluster-E/gosec.txt`](post-fix-cluster-E/gosec.txt), [`post-fix-cluster-E/gosec-count-check.txt`](post-fix-cluster-E/gosec-count-check.txt) |
+| `govulncheck ./...` | passed | `No vulnerabilities found.` | [`post-fix-cluster-E/govulncheck.txt`](post-fix-cluster-E/govulncheck.txt) |
+
+### Дельта
+
+- #2 closed: `reset_required` has durable force-password-reset semantics and no generated password leakage.
+- #3 closed: cron sync honors `profile.OnlyNew`.
+- #7 closed: sync profiles persist/pass include settings/history/routing/adminMode.
+- #8 closed: adminMode is encoded as executable plan/admin item contract.
+- #9 closed: reset_required coverage added; TLS delete/sync-fail coverage already closed by earlier Cluster A/C.
+- #13 closed: `User.force_password_reset` schema field exists.
+- #46 closed: UI reset_required option matches backend semantics and schedule UI exposes sync policy.
+- Dirty lifecycle API tests, `Endpoint.vue`, Go/frontend package manifests, `frontend/vitest.config.ts`, `tests/chaos/**` and `docs/audit/start-prompt.md` were not staged or committed.
+
+### Файлы post-fix-cluster-E
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-reset-required.txt`, `test-reset-required-race.txt`, `test-only-new.txt`, `test-only-new-race.txt`, `test-sync-profile-policy.txt`, `test-sync-profile-policy-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `gosec-count-check.txt`, `govulncheck.txt`, `frontend-vitest.txt`, `frontend-playwright-cluster-e.txt`.

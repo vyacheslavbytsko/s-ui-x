@@ -25,9 +25,11 @@
 2. **P1 / Security+Contract** — режим [`AdminModeResetRequired`](../../database/importxui/options.go:89) объявлен и выбирается в UI [`adminModeItems`](../../frontend/src/views/MigrateXui.vue:355), но в [`applyState.applyAdmins()`](../../database/importxui/plan.go:663) и [`upsertUser()`](../../database/importxui/plan.go:922) нет отдельной ветки: `new_password` и `reset_required` всегда генерируют новый пароль и кладут его в [`Report.GeneratedAdmins`](../../database/importxui/report.go:8).
    - Repro: построить план с `reset_required`, выполнить apply — пароль придёт в отчёте.
    - Fix: либо ввести семантику (поле `force_password_reset` на `User`), либо удалить `reset_required` из контракта.
+   - Status 2026-05-26: closed by Cluster E; `reset_required` now persists `users.force_password_reset`, applies the source password hash without generated password leakage, and clears the flag on password changes.
 
 3. **P2 / Functional correctness** — игнорируется поле [`XUISyncProfile.OnlyNew`](../../database/model/model.go:118) в cron‑синке: в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90) жёстко прошиты `OnlyNew: true` для [`Plan(...)`](../../cronjob/xuiSyncJob.go:110) и [`Apply(...)`](../../cronjob/xuiSyncJob.go:118).
    - Fix: пробросить `profile.OnlyNew` в обе опции.
+   - Status 2026-05-26: closed by Cluster E; cron sync passes `profile.OnlyNew` to both `Plan` and `Apply`, preserving explicit `false` from sync profiles.
 
 4. **P2 / Observability** — обобщённый summary при ошибке sync: [`recordRun(profile, "failed", map[string]any{"error":"failed"})`](../../cronjob/xuiSyncJob.go:85) теряет реальный `lastErr`.
    - Fix: положить sanitized `lastErr.Error()` и класс ошибки.
@@ -43,10 +45,13 @@
 
 7. **P3 / Profile config drift** — `IncludeSettings/IncludeHistory/IncludeRouting/AdminMode` нельзя задать из профиля в cron‑синке: cron собирает `PlanOptions` без них в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90), хотя UI и API их поддерживают.
    - Fix: расширить модель профиля и пробросить флаги в Plan/Apply.
+   - Status 2026-05-26: closed by Cluster E; sync profiles persist include settings/history/routing plus `adminMode`, and cron passes them into import planning/apply.
 
 8. **P3 / API/UI contract** — `adminMode` пробрасывается из [`MigrateXui.buildPlan()`](../../frontend/src/views/MigrateXui.vue:413) в [`ImportXuiPlan()`](../../api/import_xui.go:125), но в plan‑item этот режим не закодирован как исполнимое правило для apply (см. п. 2).
+   - Status 2026-05-26: closed by Cluster E; `adminMode` is encoded on admin plan items and executed by the `new_password` / `reset_required` apply branches.
 
 9. **P3 / Test coverage gap** — в [`plan_test.go`](../../database/importxui/plan_test.go:1) есть тест только на `new_password` ([`TestApply_ImportsSettingsAndNewPasswordAdmins()`](../../database/importxui/plan_test.go:137)); ветка `reset_required`, ошибка delete в TLS replace и sync‑fail запись не покрыты.
+   - Status 2026-05-26: closed by Cluster E plus earlier Cluster A/C; reset_required coverage added, while TLS delete and sync-fail coverage were already green.
 
 ### 1.2. Слой данных, бэкап, миграции
 
@@ -63,6 +68,7 @@
     - Status 2026-05-25: closed by Cluster G; missing settings.config in versioned backup logged as warning, restore continues.
 
 13. **P3 / Schema** — [`type User`](../../database/model/model.go:18) не имеет поля `force_password_reset` или эквивалента; нельзя реализовать AdminModeResetRequired без доработки схемы (связано с п. 2).
+   - Status 2026-05-26: closed by Cluster E; `User.force_password_reset` schema field exists with default-false startup coverage.
 
 14. **P3 / Migrations** — [`AdaptToCurrentVersion()`](../../database/adapt.go:28) вызывается всегда; ошибки логируются как warning в [`db.go`](../../database/db.go:144).
     - Fix: эскалировать ошибку adapt в начале запуска до явного отказа, если индекс/настройки критичны.
@@ -192,6 +198,7 @@
     - Status 2026-05-25: closed by Cluster H; generated admin passwords are hidden until reveal and auto-cleared.
 
 46. **P3 / API contract** — `MigrateXui.adminModeItems` всегда показывает `reset_required`, даже когда backend этой семантикой не управляет.
+   - Status 2026-05-26: closed by Cluster E; frontend `reset_required` option now matches backend semantics and schedule UI exposes sync policy controls.
 
 47. **Closed / P2 / Concurrency / Phase 3 race finding** — full-suite race detector показал гонку между фоновым [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) / batch flush через [`flushTokenUseBatch()`](../../service/token_use_debouncer.go:163) и переинициализацией тестовой БД через [`api.initSessionTestDB()`](../../api/session_test.go:28), вызванной из [`TestSaveSettingsRejectsProtectedKeyAndAudits()`](../../api/settings_save_test.go:111).
     - Impact: потенциальный partial write через `UPDATE tokens` во время drop/recreate/InitDB; в тестовом full-suite это проявляется как `no such table: tokens`, в production-паттерне риск похож на запись в устаревший/пересоздаваемый handle.
@@ -1358,3 +1365,28 @@ Singleton #42 был duplicate pointer to #32 in the frontend WS registry sectio
 ### Команды и логи
 
 См. Cluster D validation in `tests/baseline/post-fix-cluster-D/` and the docs-only note in `tests/baseline/post-fix-42/`.
+
+## Post-fix Cluster E 2026-05-26
+
+### Коммиты
+
+- `f38d9701f11c1ff72e0b6a87edbb6d51f9793a67` — fix(importxui): implement reset-required admin mode (registry #2 #8 #13)
+- `79703c7a9a4fd81a1c9c80abb3e1fbdb45777f75` — fix(cron): honor xui sync only-new policy (registry #3)
+- `ca6245fce987afcc3d36751c40a83d5cdc25cd98` — fix(cron): persist xui sync import policy options (registry #7)
+- `3a9aba2daea5ccb6e986397bf2f1db6858180786` — fix(frontend): align xui reset-required and sync profile UI (registry #46)
+
+Cluster E закрыл xui-import contract drift: `reset_required` теперь является durable auth state через `users.force_password_reset`, cron sync использует сохраненную политику профиля, а UI отправляет и показывает те же policy fields, что исполняет backend.
+
+### Дельта по реестру
+
+- #2 closed: `reset_required` has durable force-password-reset semantics and no generated password leakage.
+- #3 closed: cron sync honors `profile.OnlyNew`.
+- #7 closed: sync profiles persist/pass include settings/history/routing/adminMode.
+- #8 closed: adminMode is encoded as executable plan/admin item contract.
+- #9 closed: reset_required coverage added; TLS delete/sync-fail coverage already closed by earlier Cluster A/C.
+- #13 closed: `User.force_password_reset` schema field exists.
+- #46 closed: UI reset_required option matches backend semantics and schedule UI exposes sync policy.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster E 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-E/`.
