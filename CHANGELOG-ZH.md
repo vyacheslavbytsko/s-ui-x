@@ -14,6 +14,8 @@
 - `reset_required` 现在通过 `users.force_password_reset` 持久化；
   sync profiles 会保存 import policy fields，frontend schedule/profile
   payloads 也与 backend contract 对齐。
+- Endpoint 保存现在会阻止重复提交，并在保存失败时正确清理 loading
+  state。
 - 新增最终 audit closure note，并清理本地 scratch artifacts；Release、
   Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.5-beta4`。
 

@@ -15,6 +15,8 @@
 - `reset_required` получил durable-семантику через
   `users.force_password_reset`; sync profiles теперь сохраняют import policy
   fields, а frontend schedule/profile payloads совпадают с backend contract.
+- Endpoint save теперь защищён от double-submit и корректно сбрасывает loading
+  state при ошибке сохранения.
 - Добавлена финальная audit closure note и cleanup локальных scratch
   artifacts; default tag в Release, Windows и Docker workflows обновлён до
   `v1.5.5-beta4`.

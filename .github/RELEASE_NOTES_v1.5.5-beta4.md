@@ -14,6 +14,8 @@ prepares the tree for GitHub release.
   plan are included.
 - MigrateXui UX now preserves apply errors, waits for rollback health before
   reload and hides generated admin passwords until explicit reveal.
+- Endpoint save now blocks double-submit attempts and always clears loading
+  state after failed save requests.
 
 ## Added
 
@@ -49,4 +51,6 @@ GitHub release.
   MigrateXui UX.
 - `reset_required` теперь хранится как `users.force_password_reset` без утечки
   временных паролей в отчёте.
+- Endpoint save защищён от double-submit и сбрасывает loading state после
+  ошибок сохранения.
 - Добавлена финальная audit closure note и cleanup локальных scratch artifacts.

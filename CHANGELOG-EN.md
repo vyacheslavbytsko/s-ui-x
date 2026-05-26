@@ -15,6 +15,8 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Implemented durable `reset_required` import semantics through
   `users.force_password_reset`, persisted sync-profile import policy fields,
   and aligned frontend schedule/profile payloads with the backend contract.
+- Endpoint saves now guard against double-submit while preserving loading-state
+  cleanup when save requests fail.
 - Added the final audit closure note and release cleanup for local scratch
   artifacts; Release, Windows and Docker workflow dispatch defaults now target
   `v1.5.5-beta4`.
