@@ -118,10 +118,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.6-beta1 Pre-release
+## Install v1.5.6-beta1
 
-This is a full pre-release build for sing-box 1.13 UI parity. Use it when you
-want the new 1.13 controls before the next stable release.
+This beta build adds the sing-box 1.13 UI parity controls before the next
+stable release.
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta1
@@ -477,10 +477,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка pre-release v1.5.6-beta1
+## Установка v1.5.6-beta1
 
-Это полноценная pre-release сборка для UI-паритета sing-box 1.13. Используйте
-её, если нужны новые controls 1.13 до следующего стабильного релиза.
+Эта beta-сборка добавляет UI-паритет sing-box 1.13 до следующего стабильного
+релиза.
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta1

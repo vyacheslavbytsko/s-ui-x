@@ -1,6 +1,6 @@
-# S-UI v1.5.6-beta1 Pre-release
+# S-UI v1.5.6-beta1
 
-Full pre-release beta for sing-box 1.13 UI parity in `deposist/s-ui-x`.
+Beta for sing-box 1.13 UI parity in `deposist/s-ui-x`.
 
 ## Highlights
 
@@ -28,10 +28,9 @@ Full pre-release beta for sing-box 1.13 UI parity in `deposist/s-ui-x`.
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta1
 ```
 
-# S-UI v1.5.6-beta1 Pre-release
+# S-UI v1.5.6-beta1
 
-Полноценный pre-release beta для UI-паритета sing-box 1.13 в
-`deposist/s-ui-x`.
+Beta для UI-паритета sing-box 1.13 в `deposist/s-ui-x`.
 
 ## Главное
 
