@@ -338,6 +338,14 @@ func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []st
 			warnings = append(warnings, fmt.Sprintf("routing rule %d uses balancer; manual review required", index))
 			continue
 		}
+		if _, ok := rule["attrs"]; ok {
+			// Xray attrs match HTTP attributes/headers; sing-box has no
+			// equivalent. Dropping them would silently broaden the match, so the
+			// whole rule needs manual review.
+			manual++
+			warnings = append(warnings, fmt.Sprintf("routing rule %d uses attrs (HTTP attribute match) which sing-box does not support; manual review required", index))
+			continue
+		}
 		outboundTag := strings.TrimSpace(fmt.Sprint(rule["outboundTag"]))
 		if outboundTag == "" {
 			manual++
@@ -357,43 +365,23 @@ func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []st
 		} else {
 			next["outbound"] = target
 		}
-		if domains := stringList(rule["domain"]); len(domains) > 0 {
-			for _, domain := range domains {
-				if strings.HasPrefix(domain, "geosite:") {
-					name := strings.ReplaceAll(domain, ":", "-")
-					next["rule_set"] = appendString(next["rule_set"], name)
-					if _, ok := seenRuleSet[name]; !ok {
-						seenRuleSet[name] = struct{}{}
-						ruleSets = append(ruleSets, map[string]any{"tag": name, "type": "remote", "format": "binary"})
-					}
-					continue
-				}
-				manual++
-				warnings = append(warnings, fmt.Sprintf("routing rule %d domain %q requires manual review", index, domain))
-			}
-		}
-		if ips := stringList(rule["ip"]); len(ips) > 0 {
-			for _, ip := range ips {
-				if strings.HasPrefix(ip, "geoip:") {
-					next["geoip"] = appendString(next["geoip"], strings.TrimPrefix(ip, "geoip:"))
-					continue
-				}
-				next["ip_cidr"] = appendString(next["ip_cidr"], ip)
-			}
-		}
-		if len(next) == 1 {
+		matched, matcherWarnings := applyRuleMatchers(index, rule, next, &ruleSets, seenRuleSet)
+		warnings = append(warnings, matcherWarnings...)
+		if !matched {
 			manual++
-			warnings = append(warnings, fmt.Sprintf("routing rule %d has unsupported matchers", index))
+			warnings = append(warnings, fmt.Sprintf("routing rule %d has no supported matchers; manual review required", index))
 			continue
 		}
 		rulesOut = append(rulesOut, next)
 		mapped++
 	}
+	if dns, ok := cfg["dns"].(map[string]any); ok {
+		dnsOut, dnsWarnings := mapXrayDNS(dns, &ruleSets, seenRuleSet)
+		warnings = append(warnings, dnsWarnings...)
+		result["dns"] = dnsOut
+	}
 	route["rules"] = rulesOut
 	route["rule_set"] = ruleSets
-	if dns, ok := cfg["dns"].(map[string]any); ok {
-		result["dns"] = dns
-	}
 	return result, warnings, mapped, manual
 }
 

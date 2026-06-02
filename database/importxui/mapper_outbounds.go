@@ -43,140 +43,176 @@ type xrayProxyUser struct {
 // xuiTLSSetting is the `tlsSettings` block of an Xray stream (client/outbound
 // side). Only the fields s-ui can carry over are decoded.
 type xuiTLSSetting struct {
-	ServerName    string   `json:"serverName"`
-	AllowInsecure bool     `json:"allowInsecure"`
-	Fingerprint   string   `json:"fingerprint"`
-	ALPN          []string `json:"alpn"`
+	ServerName    string           `json:"serverName"`
+	AllowInsecure bool             `json:"allowInsecure"`
+	Fingerprint   string           `json:"fingerprint"`
+	ALPN          []string         `json:"alpn"`
+	Certificates  []xuiCertificate `json:"certificates"`
 }
 
-// outboundFromXray converts a single proxy Xray outbound (vmess/vless/trojan/
-// shadowsocks/socks/http) into an s-ui (sing-box) outbound. It returns nil with
-// a warning for protocols that have no automatic mapping or for malformed
-// settings, so the caller can surface the loss instead of dropping it silently.
-func outboundFromXray(ob xrayOutbound) (*model.Outbound, []string) {
+// outboundsFromXray converts a proxy Xray outbound (vmess/vless/trojan/
+// shadowsocks/socks/http) into one or more s-ui (sing-box) outbounds. A single
+// server yields one outbound carrying the source tag; multiple servers yield
+// one member outbound per server plus a urltest group that carries the source
+// tag (so routing rules keep resolving to it). It returns an empty slice with a
+// warning for protocols with no mapping or malformed settings, so the caller
+// surfaces the loss instead of dropping it silently.
+func outboundsFromXray(ob xrayOutbound) ([]model.Outbound, []string) {
 	proto := strings.ToLower(strings.TrimSpace(ob.Protocol))
 	tag := strings.TrimSpace(ob.Tag)
 	var settings xrayProxySettings
 	if err := decodeJSON(ob.Settings, &settings); err != nil {
 		return nil, []string{fmt.Sprintf("outbound %s: invalid %s settings: %v; skipped", tag, proto, err)}
 	}
-	stream := parseOutboundStream(ob)
 
-	opts := map[string]any{}
+	servers := settings.Servers
+	if proto == "vmess" || proto == "vless" {
+		servers = settings.Vnext
+	}
+	if len(servers) == 0 {
+		return nil, []string{fmt.Sprintf("outbound %s: %s has no server; skipped", tag, proto)}
+	}
+
+	stream := parseOutboundStream(ob)
+	carriesStream := proto == "vmess" || proto == "vless" || proto == "trojan" || proto == "http"
 	var warnings []string
-	var server string
-	carriesStream := false // vmess/vless/trojan/http carry tls + transport
+
+	var tlsBlock map[string]any
+	var transport map[string]any
+	if carriesStream {
+		var w []string
+		tlsBlock, w = mapOutboundClientTLS(tag, stream)
+		warnings = append(warnings, w...)
+		transport, w = mapTransport("outbound", tag, stream)
+		warnings = append(warnings, w...)
+	}
+
+	// packet_encoding (xudp) is the one mux-adjacent setting that interoperates
+	// across Xray and sing-box; Xray mux itself is not wire-compatible, so it is
+	// reported rather than enabled.
+	packetEncoding, muxWarnings := outboundProxyExtras(ob, tag)
+	warnings = append(warnings, muxWarnings...)
+
+	build := func(srv xrayProxyServer, outTag string) (*model.Outbound, []string) {
+		opts := map[string]any{}
+		server := strings.TrimSpace(srv.Address)
+		if server == "" {
+			return nil, []string{fmt.Sprintf("outbound %s: missing server address; skipped", outTag)}
+		}
+		opts["server"] = server
+		opts["server_port"] = srv.Port
+		switch proto {
+		case "vmess":
+			user := firstProxyUser(srv.Users)
+			opts["uuid"] = strings.TrimSpace(user.ID)
+			opts["security"] = firstNonEmpty(user.Security, "auto")
+			opts["alter_id"] = user.AlterID
+		case "vless":
+			user := firstProxyUser(srv.Users)
+			opts["uuid"] = strings.TrimSpace(user.ID)
+			if flow := strings.TrimSpace(user.Flow); flow != "" {
+				opts["flow"] = flow
+			}
+		case "trojan":
+			opts["password"] = srv.Password
+		case "shadowsocks":
+			opts["method"] = firstNonEmpty(srv.Method, "none")
+			opts["password"] = srv.Password
+		case "socks":
+			opts["version"] = "5"
+			if user := firstProxyUser(srv.Users); strings.TrimSpace(user.User) != "" {
+				opts["username"] = strings.TrimSpace(user.User)
+				opts["password"] = user.Pass
+			}
+		case "http":
+			if user := firstProxyUser(srv.Users); strings.TrimSpace(user.User) != "" {
+				opts["username"] = strings.TrimSpace(user.User)
+				opts["password"] = user.Pass
+			}
+		}
+		if carriesStream {
+			if tlsBlock != nil {
+				opts["tls"] = tlsBlock
+			}
+			if transport != nil {
+				opts["transport"] = transport
+			}
+		}
+		if packetEncoding != "" && (proto == "vless" || proto == "vmess") {
+			opts["packet_encoding"] = packetEncoding
+		}
+		optionsJSON, err := marshalJSON(opts)
+		if err != nil {
+			return nil, []string{fmt.Sprintf("outbound %s: %v", outTag, err)}
+		}
+		return &model.Outbound{Type: proto, Tag: outTag, Options: optionsJSON}, nil
+	}
 
 	switch proto {
-	case "vmess":
-		ep := firstServer(settings.Vnext)
-		if ep == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: vmess has no vnext server; skipped", tag)}
-		}
-		user := firstProxyUser(ep.Users)
-		server = strings.TrimSpace(ep.Address)
-		opts["server"] = server
-		opts["server_port"] = ep.Port
-		opts["uuid"] = strings.TrimSpace(user.ID)
-		opts["security"] = firstNonEmpty(user.Security, "auto")
-		opts["alter_id"] = user.AlterID
-		carriesStream = true
-	case "vless":
-		ep := firstServer(settings.Vnext)
-		if ep == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: vless has no vnext server; skipped", tag)}
-		}
-		user := firstProxyUser(ep.Users)
-		server = strings.TrimSpace(ep.Address)
-		opts["server"] = server
-		opts["server_port"] = ep.Port
-		opts["uuid"] = strings.TrimSpace(user.ID)
-		if flow := strings.TrimSpace(user.Flow); flow != "" {
-			opts["flow"] = flow
-		}
-		carriesStream = true
-	case "trojan":
-		srv := firstServer(settings.Servers)
-		if srv == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: trojan has no servers; skipped", tag)}
-		}
-		server = strings.TrimSpace(srv.Address)
-		opts["server"] = server
-		opts["server_port"] = srv.Port
-		opts["password"] = srv.Password
-		carriesStream = true
-	case "shadowsocks":
-		srv := firstServer(settings.Servers)
-		if srv == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: shadowsocks has no servers; skipped", tag)}
-		}
-		server = strings.TrimSpace(srv.Address)
-		opts["server"] = server
-		opts["server_port"] = srv.Port
-		opts["method"] = firstNonEmpty(srv.Method, "none")
-		opts["password"] = srv.Password
-		// shadowsocks has no tls/transport in sing-box.
-	case "socks":
-		srv := firstServer(settings.Servers)
-		if srv == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: socks has no servers; skipped", tag)}
-		}
-		server = strings.TrimSpace(srv.Address)
-		opts["server"] = server
-		opts["server_port"] = srv.Port
-		opts["version"] = "5"
-		if user := firstProxyUser(srv.Users); strings.TrimSpace(user.User) != "" {
-			opts["username"] = strings.TrimSpace(user.User)
-			opts["password"] = user.Pass
-		}
-	case "http":
-		srv := firstServer(settings.Servers)
-		if srv == nil {
-			return nil, []string{fmt.Sprintf("outbound %s: http has no servers; skipped", tag)}
-		}
-		server = strings.TrimSpace(srv.Address)
-		opts["server"] = server
-		opts["server_port"] = srv.Port
-		if user := firstProxyUser(srv.Users); strings.TrimSpace(user.User) != "" {
-			opts["username"] = strings.TrimSpace(user.User)
-			opts["password"] = user.Pass
-		}
-		carriesStream = true
+	case "vmess", "vless", "trojan", "shadowsocks", "socks", "http":
+		// supported below
 	default:
 		return nil, []string{fmt.Sprintf("outbound %s: protocol %q has no automatic s-ui mapping; recreate it manually", tag, proto)}
 	}
 
-	if server == "" {
-		return nil, []string{fmt.Sprintf("outbound %s: missing server address; skipped", tag)}
+	if len(servers) == 1 {
+		out, w := build(servers[0], tag)
+		warnings = append(warnings, w...)
+		if out == nil {
+			return nil, warnings
+		}
+		return []model.Outbound{*out}, warnings
 	}
 
-	if carriesStream {
-		if tls, tlsWarn := mapOutboundClientTLS(tag, stream); tls != nil {
-			opts["tls"] = tls
-			warnings = append(warnings, tlsWarn...)
-		} else {
-			warnings = append(warnings, tlsWarn...)
-		}
-		if transport, trWarn := mapTransport("outbound", tag, stream); transport != nil {
-			opts["transport"] = transport
-			warnings = append(warnings, trWarn...)
-		} else {
-			warnings = append(warnings, trWarn...)
+	// Multiple servers: one member per server + a urltest group carrying the tag.
+	members := make([]model.Outbound, 0, len(servers))
+	memberTags := make([]string, 0, len(servers))
+	for i := range servers {
+		memberTag := fmt.Sprintf("%s-%d", tag, i)
+		out, w := build(servers[i], memberTag)
+		warnings = append(warnings, w...)
+		if out != nil {
+			members = append(members, *out)
+			memberTags = append(memberTags, memberTag)
 		}
 	}
-
-	optionsJSON, err := marshalJSON(opts)
+	if len(members) == 0 {
+		return nil, warnings
+	}
+	groupJSON, err := marshalJSON(map[string]any{"outbounds": memberTags})
 	if err != nil {
 		return nil, append(warnings, fmt.Sprintf("outbound %s: %v", tag, err))
 	}
-	return &model.Outbound{Type: proto, Tag: tag, Options: optionsJSON}, warnings
+	warnings = append(warnings, fmt.Sprintf("outbound %s had %d servers; migrated as a urltest group over %v", tag, len(members), memberTags))
+	return append(members, model.Outbound{Type: "urltest", Tag: tag, Options: groupJSON}), warnings
 }
 
-func firstServer(servers []xrayProxyServer) *xrayProxyServer {
-	if len(servers) == 0 {
-		return nil
+// outboundProxyExtras inspects an Xray outbound's mux block. It returns the
+// sing-box packet_encoding to set ("xudp" when the source used XUDP) and a
+// warning when Xray mux was enabled — sing-box multiplex uses a different,
+// non-interoperable wire protocol, so enabling it automatically would break an
+// otherwise-working outbound.
+func outboundProxyExtras(ob xrayOutbound, tag string) (string, []string) {
+	if len(ob.Mux) == 0 {
+		return "", nil
 	}
-	return &servers[0]
+	var mux struct {
+		Enabled         bool `json:"enabled"`
+		Concurrency     int  `json:"concurrency"`
+		XudpConcurrency int  `json:"xudpConcurrency"`
+	}
+	if err := json.Unmarshal(ob.Mux, &mux); err != nil {
+		return "", nil
+	}
+	var packetEncoding string
+	if mux.XudpConcurrency > 0 {
+		packetEncoding = "xudp"
+	}
+	var warnings []string
+	if mux.Enabled {
+		warnings = append(warnings, fmt.Sprintf("outbound %s had Xray mux enabled (concurrency %d); sing-box multiplex is not wire-compatible with Xray mux, so it was left disabled — enable multiplex manually only if the remote also speaks sing-box mux", tag, mux.Concurrency))
+	}
+	return packetEncoding, warnings
 }
 
 func firstProxyUser(users []xrayProxyUser) xrayProxyUser {

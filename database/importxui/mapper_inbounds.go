@@ -271,10 +271,8 @@ func mapTransport(entity string, tag string, stream xuiStreamSettings) (map[stri
 		if path, ok := stringFromMap(stream.WSSettings, "path"); ok && path != "" {
 			transport["path"] = path
 		}
-		if headers, ok := mapFromMap(stream.WSSettings, "headers"); ok {
-			if host, ok := stringFromMap(headers, "Host"); ok && host != "" {
-				transport["headers"] = map[string]any{"Host": host}
-			}
+		if headers := wsHeaders(stream.WSSettings); len(headers) > 0 {
+			transport["headers"] = headers
 		}
 		return transport, nil
 	case "grpc":
@@ -315,6 +313,30 @@ func mapTransport(entity string, tag string, stream xuiStreamSettings) (map[stri
 	}
 }
 
+// wsHeaders collects all WebSocket request headers from Xray wsSettings. Xray
+// stores custom headers under "headers"; some panels also keep the Host under a
+// top-level "host". sing-box carries every header (including Host) in the
+// transport headers map, so all are preserved rather than just Host.
+func wsHeaders(ws map[string]any) map[string]any {
+	out := map[string]any{}
+	if headers, ok := mapFromMap(ws, "headers"); ok {
+		for k, v := range headers {
+			if s := strings.TrimSpace(fmt.Sprint(v)); s != "" {
+				out[k] = s
+			}
+		}
+	}
+	if _, has := out["Host"]; !has {
+		if host, ok := stringFromMap(ws, "host"); ok && host != "" {
+			out["Host"] = host
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func mapOutboundTLSBlock(stream xuiStreamSettings, reality *realitySpec) (map[string]any, []string) {
 	switch stream.Security {
 	case "":
@@ -339,7 +361,23 @@ func mapOutboundTLSBlock(stream xuiStreamSettings, reality *realitySpec) (map[st
 			},
 		}, nil
 	case "tls":
-		return map[string]any{"enabled": true, "insecure": false}, []string{"non-reality TLS requires manual certificate/key upload"}
+		// Client-side TLS block for the subscription/preview link. The server-side
+		// certificate is migrated separately (a model.Tls record) when inline, or
+		// flagged for manual upload when only a file path is present.
+		block := map[string]any{"enabled": true}
+		if sni := strings.TrimSpace(stream.TLSSettings.ServerName); sni != "" {
+			block["server_name"] = sni
+		}
+		if stream.TLSSettings.AllowInsecure {
+			block["insecure"] = true
+		}
+		if len(stream.TLSSettings.ALPN) > 0 {
+			block["alpn"] = stream.TLSSettings.ALPN
+		}
+		if fp := strings.TrimSpace(stream.TLSSettings.Fingerprint); fp != "" {
+			block["utls"] = map[string]any{"enabled": true, "fingerprint": fp}
+		}
+		return block, nil
 	default:
 		return nil, []string{fmt.Sprintf("TLS security %q requires manual review", stream.Security)}
 	}

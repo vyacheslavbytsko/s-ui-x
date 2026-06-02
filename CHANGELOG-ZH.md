@@ -4,7 +4,7 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
-## [1.5.6-beta8] - 2026-06-03 - 3x-ui 迁移：代理出站 (vmess/vless/trojan/…)
+## [1.5.6-beta8] - 2026-06-03 - 3x-ui 迁移：出站、路由匹配器、TLS 证书与 DNS
 
 - 代理出站现在会迁移为 s-ui 出站：此前只处理 WARP（WireGuard）、`freedom` 和
   `blackhole`，因此类型为 `vmess`/`vless`/`trojan`/`shadowsocks`/`socks`/`http`
@@ -22,6 +22,22 @@
   迁移。
 - 出站仅在为新增时创建（重复导入或计划同步不会覆盖运维人员编辑过的同名出站），并且
   导入报告新增 `outbounds`（已导入/已跳过）计数。
+- 路由规则现在覆盖更多匹配器，而不再标记为“需要手动检查”：`port`/`sourcePort`
+  （含范围）、`network`、`protocol`、`source`、`inboundTag`（→`inbound`）、`user`
+  （→`auth_user`），以及非 `geosite` 域名（`domain:`/`full:`/`keyword:`/`regexp:`/
+  裸域名 → `domain_suffix`/`domain`/`domain_keyword`/`domain_regex`）。`attrs` 与
+  `balancerTag` 仍需手动检查，因为 sing-box 没有对应项。
+- Xray 的 `dns` 块会翻译为 sing-box 格式（类型化服务器
+  `udp`/`tls`/`https`/`h3`/`quic`/`tcp`/`local`，按域名限定的服务器转为 DNS 规则，
+  以及 `final`、查询策略与 `client_subnet`），而不再原样复制（那会生成无效块）。
+  `hosts`/`fakedns` 会被标记以便手动设置。
+- 非 reality 的 TLS 证书现在会迁移：`tlsSettings` 内含内联证书/密钥的入站会获得真正
+  的 s-ui TLS 记录（服务器证书 + 客户端块）；仅以文件路径引用的证书会被标记为需手动
+  上传，因为导入器只读取数据库，而非源主机磁盘。
+- WebSocket 传输会携带所有请求头，而不仅是 `Host`。
+- 出站附加项：当源使用 XUDP 时设置 `packet_encoding`（`xudp`）；多服务器出站会变为
+  按服务器的成员加一个 `urltest` 组；Xray `mux` 仅作提示而不启用，因为 sing-box 的
+  多路复用与 Xray mux 在协议层不兼容，启用会破坏该出站。
 - 完整发布说明：[`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md)。
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时

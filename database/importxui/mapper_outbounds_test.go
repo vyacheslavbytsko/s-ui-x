@@ -38,6 +38,16 @@ func mapAt(t *testing.T, m map[string]any, key string) map[string]any {
 	return v
 }
 
+// singleOutbound maps an Xray outbound expected to produce exactly one s-ui
+// outbound and returns it (nil when none was produced).
+func singleOutbound(ob xrayOutbound) (*model.Outbound, []string) {
+	outs, w := outboundsFromXray(ob)
+	if len(outs) == 0 {
+		return nil, w
+	}
+	return &outs[0], w
+}
+
 func TestOutboundFromXray_VLESSReality(t *testing.T) {
 	ob := xrayOutbound{
 		Tag:            "inbams-p6updfmz",
@@ -45,7 +55,7 @@ func TestOutboundFromXray_VLESSReality(t *testing.T) {
 		Settings:       json.RawMessage(`{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"uuid-1","flow":"xtls-rprx-vision","encryption":"none"}]}]}`),
 		StreamSettings: json.RawMessage(`{"network":"tcp","security":"reality","realitySettings":{"publicKey":"PBK","shortId":"abcd","serverName":"example.com","fingerprint":"chrome"}}`),
 	}
-	out, warnings := outboundFromXray(ob)
+	out, warnings := singleOutbound(ob)
 	if out == nil {
 		t.Fatalf("expected an outbound, got nil; warnings=%v", warnings)
 	}
@@ -80,7 +90,7 @@ func TestOutboundFromXray_VMessWSTLS(t *testing.T) {
 		Settings:       json.RawMessage(`{"vnext":[{"address":"v.example.com","port":8443,"users":[{"id":"vuuid","alterId":0,"security":"auto"}]}]}`),
 		StreamSettings: json.RawMessage(`{"network":"ws","security":"tls","tlsSettings":{"serverName":"v.example.com","fingerprint":"chrome"},"wsSettings":{"path":"/ws","headers":{"Host":"v.example.com"}}}`),
 	}
-	out, warnings := outboundFromXray(ob)
+	out, warnings := singleOutbound(ob)
 	if out == nil {
 		t.Fatalf("expected an outbound, got nil; warnings=%v", warnings)
 	}
@@ -112,7 +122,7 @@ func TestOutboundFromXray_TrojanGRPC(t *testing.T) {
 		Settings:       json.RawMessage(`{"servers":[{"address":"t.example.com","port":443,"password":"tpw"}]}`),
 		StreamSettings: json.RawMessage(`{"network":"grpc","security":"tls","tlsSettings":{"serverName":"t.example.com"},"grpcSettings":{"serviceName":"grpcsvc"}}`),
 	}
-	out, warnings := outboundFromXray(ob)
+	out, warnings := singleOutbound(ob)
 	if out == nil {
 		t.Fatalf("expected an outbound, got nil; warnings=%v", warnings)
 	}
@@ -132,7 +142,7 @@ func TestOutboundFromXray_Shadowsocks(t *testing.T) {
 		Protocol: "shadowsocks",
 		Settings: json.RawMessage(`{"servers":[{"address":"s.example.com","port":8388,"method":"aes-256-gcm","password":"sspw"}]}`),
 	}
-	out, warnings := outboundFromXray(ob)
+	out, warnings := singleOutbound(ob)
 	if out == nil {
 		t.Fatalf("expected an outbound, got nil; warnings=%v", warnings)
 	}
@@ -154,7 +164,7 @@ func TestOutboundFromXray_SocksAndHTTPAuth(t *testing.T) {
 		Protocol: "socks",
 		Settings: json.RawMessage(`{"servers":[{"address":"127.0.0.1","port":1080,"users":[{"user":"u1","pass":"p1"}]}]}`),
 	}
-	out, _ := outboundFromXray(socks)
+	out, _ := singleOutbound(socks)
 	if out == nil {
 		t.Fatal("expected socks outbound")
 	}
@@ -168,7 +178,7 @@ func TestOutboundFromXray_SocksAndHTTPAuth(t *testing.T) {
 		Protocol: "http",
 		Settings: json.RawMessage(`{"servers":[{"address":"127.0.0.1","port":8080,"users":[{"user":"hu","pass":"hp"}]}]}`),
 	}
-	out2, _ := outboundFromXray(http)
+	out2, _ := singleOutbound(http)
 	if out2 == nil {
 		t.Fatal("expected http outbound")
 	}
@@ -188,7 +198,7 @@ func TestOutboundFromXray_TransportWarningSaysOutbound(t *testing.T) {
 		Settings:       json.RawMessage(`{"vnext":[{"address":"a.example.com","port":443,"users":[{"id":"u"}]}]}`),
 		StreamSettings: json.RawMessage(`{"network":"splithttp","httpupgradeSettings":{"path":"/x"}}`),
 	}
-	out, warnings := outboundFromXray(ob)
+	out, warnings := singleOutbound(ob)
 	if out == nil {
 		t.Fatalf("expected an outbound, got nil; warnings=%v", warnings)
 	}
@@ -202,12 +212,62 @@ func TestOutboundFromXray_TransportWarningSaysOutbound(t *testing.T) {
 }
 
 func TestOutboundFromXray_MissingServerSkipped(t *testing.T) {
-	out, warnings := outboundFromXray(xrayOutbound{Tag: "empty", Protocol: "trojan", Settings: json.RawMessage(`{}`)})
+	out, warnings := singleOutbound(xrayOutbound{Tag: "empty", Protocol: "trojan", Settings: json.RawMessage(`{}`)})
 	if out != nil {
 		t.Fatalf("expected nil for trojan with no servers, got %v", out)
 	}
-	if len(warnings) == 0 || !strings.Contains(warnings[0], "no servers") {
-		t.Errorf("expected a 'no servers' warning, got %v", warnings)
+	if len(warnings) == 0 || !strings.Contains(warnings[0], "no server") {
+		t.Errorf("expected a 'no server' warning, got %v", warnings)
+	}
+}
+
+// TestOutboundsFromXray_MultiServerGroupAndMux checks that a multi-server proxy
+// outbound becomes per-server members + a urltest group carrying the tag, that
+// XUDP signals packet_encoding, and that Xray mux is reported (not silently
+// enabled as the non-interoperable sing-box multiplex).
+func TestOutboundsFromXray_MultiServerGroupAndMux(t *testing.T) {
+	ob := xrayOutbound{
+		Tag:      "chain",
+		Protocol: "vless",
+		Settings: json.RawMessage(`{"vnext":[
+			{"address":"a.example.com","port":443,"users":[{"id":"u1"}]},
+			{"address":"b.example.com","port":443,"users":[{"id":"u2"}]}
+		]}`),
+		Mux: json.RawMessage(`{"enabled":true,"concurrency":8,"xudpConcurrency":16}`),
+	}
+	outs, warnings := outboundsFromXray(ob)
+	if len(outs) != 3 {
+		t.Fatalf("want 3 outbounds (2 members + group), got %d: %#v", len(outs), outs)
+	}
+	var group *model.Outbound
+	memberTags := map[string]bool{}
+	for i := range outs {
+		o := &outs[i]
+		if o.Type == "urltest" {
+			group = o
+			continue
+		}
+		memberTags[o.Tag] = true
+		if m := outboundToMap(t, o); m["packet_encoding"] != "xudp" {
+			t.Errorf("member %s packet_encoding = %v, want xudp", o.Tag, m["packet_encoding"])
+		}
+	}
+	if !memberTags["chain-0"] || !memberTags["chain-1"] {
+		t.Errorf("member tags = %v, want chain-0 & chain-1", memberTags)
+	}
+	if group == nil || group.Tag != "chain" {
+		t.Fatalf("expected urltest group tagged 'chain', got %#v", group)
+	}
+	if gobs, _ := outboundToMap(t, group)["outbounds"].([]any); len(gobs) != 2 {
+		t.Errorf("group outbounds = %v, want 2 members", gobs)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "mux") {
+		t.Errorf("expected a mux warning, got %v", warnings)
+	}
+	for i := range outs {
+		if _, ok := outboundToMap(t, &outs[i])["multiplex"]; ok {
+			t.Errorf("multiplex must not be enabled (Xray mux is not interoperable): %s", outs[i].Tag)
+		}
 	}
 }
 

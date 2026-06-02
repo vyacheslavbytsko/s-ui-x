@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
-## [1.5.6-beta8] - 2026-06-03 - 3x-ui migration: proxy outbounds (vmess/vless/trojan/…)
+## [1.5.6-beta8] - 2026-06-03 - 3x-ui migration: outbounds, routing matchers, TLS certs & DNS
 
 - Proxy outbounds now migrate as s-ui outbounds: previously only WARP
   (WireGuard), `freedom` and `blackhole` outbounds were handled, so an Xray
@@ -28,6 +28,26 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Outbounds are created only when new (a re-import or scheduled sync does not
   clobber an operator-edited outbound of the same tag), and the import report
   gains an `outbounds` (imported/skipped) counter.
+- Routing rules cover many more matchers instead of "manual review": `port`/
+  `sourcePort` (including ranges), `network`, `protocol`, `source`, `inboundTag`
+  (→`inbound`), `user` (→`auth_user`), and non-`geosite` domains
+  (`domain:`/`full:`/`keyword:`/`regexp:`/bare → `domain_suffix`/`domain`/
+  `domain_keyword`/`domain_regex`). `attrs` and `balancerTag` still need manual
+  review since sing-box has no equivalent.
+- The Xray `dns` block is translated to sing-box's format (typed servers
+  `udp`/`tls`/`https`/`h3`/`quic`/`tcp`/`local`, domain-scoped servers become DNS
+  rules, plus `final`, query strategy and `client_subnet`) instead of being
+  copied verbatim, which produced an invalid block. `hosts`/`fakedns` are flagged
+  for manual setup.
+- Non-reality TLS certificates now migrate: an inbound whose `tlsSettings` carry
+  an inline certificate/key gets a real s-ui TLS record (server cert + client
+  block); a certificate referenced only by file path is flagged for manual
+  upload, since the importer reads only the database, not the source host's disk.
+- WebSocket transport carries every request header, not just `Host`.
+- Outbound extras: `packet_encoding` (`xudp`) is set when the source used it; a
+  multi-server outbound becomes per-server members plus a `urltest` group; Xray
+  `mux` is reported rather than enabled, because sing-box multiplex is not
+  wire-compatible with Xray mux and enabling it would break the outbound.
 - Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout

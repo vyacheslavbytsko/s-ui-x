@@ -16,6 +16,7 @@ type xrayOutbound struct {
 	Protocol       string          `json:"protocol"`
 	Settings       json.RawMessage `json:"settings"`
 	StreamSettings json.RawMessage `json:"streamSettings"`
+	Mux            json.RawMessage `json:"mux"`
 }
 
 // xrayWireguardOutbound is the settings block of an Xray wireguard outbound
@@ -87,11 +88,11 @@ func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, []model.Outbound, ma
 				targets[tag] = tag // route to the endpoint by its own tag
 			}
 		case "vmess", "vless", "trojan", "shadowsocks", "socks", "http":
-			out, w := outboundFromXray(ob)
+			outs, w := outboundsFromXray(ob)
 			warnings = append(warnings, w...)
-			if out != nil {
-				outbounds = append(outbounds, *out)
-				targets[tag] = tag // route to the outbound by its own tag
+			if len(outs) > 0 {
+				outbounds = append(outbounds, outs...)
+				targets[tag] = tag // route to the outbound (or its group) by its own tag
 			}
 		case "loopback":
 			// Xray loopback re-injects traffic into routing; sing-box has no

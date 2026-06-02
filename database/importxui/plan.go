@@ -103,12 +103,14 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 	}
 	tx := db.Session(&gorm.Session{})
 	state := &importState{
-		report:          &Report{},
-		realityByKey:    map[string]*realitySpec{},
-		realityBySource: map[int64]*realitySpec{},
-		tlsIDByKey:      map[string]uint{},
-		inboundIDBySrc:  map[int64]uint{},
-		server:          destinationServer(tx),
+		report:           &Report{},
+		realityByKey:     map[string]*realitySpec{},
+		realityBySource:  map[int64]*realitySpec{},
+		plainTLSByKey:    map[string]*tlsCertSpec{},
+		plainTLSBySource: map[int64]*tlsCertSpec{},
+		tlsIDByKey:       map[string]uint{},
+		inboundIDBySrc:   map[int64]uint{},
+		server:           destinationServer(tx),
 	}
 	plan := &MigrationPlan{
 		Defaults: PlanDefaults{
@@ -167,8 +169,11 @@ func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, p
 			return err
 		}
 		spec, warnings, err := extractReality(row)
-		if err != nil || spec == nil {
+		if err != nil {
 			return err
+		}
+		if spec == nil {
+			return s.planPlainTLS(tx, row, plan, strategy)
 		}
 		if existing, ok := s.realityByKey[spec.Key]; ok {
 			s.realityBySource[row.ID] = existing
@@ -200,6 +205,50 @@ func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, p
 		})
 		return nil
 	})
+}
+
+func (s *importState) planPlainTLS(tx *gorm.DB, row xuiInboundRow, plan *MigrationPlan, strategy Strategy) error {
+	spec, warnings, err := extractPlainTLS(row)
+	if err != nil {
+		return err
+	}
+	if spec == nil {
+		// A file-path-only certificate has no record to plan, but its warning
+		// must still surface so the operator knows to upload it.
+		if len(warnings) > 0 {
+			plan.Items = append(plan.Items, warningOnlyItem(KindTLS, "tls-warn:"+row.Tag, row.Tag, row.Tag, warnings))
+		}
+		return nil
+	}
+	if existing, ok := s.plainTLSByKey[spec.Key]; ok {
+		s.plainTLSBySource[row.ID] = existing
+		return nil
+	}
+	s.plainTLSByKey[spec.Key] = spec
+	s.plainTLSBySource[row.ID] = spec
+	record, err := buildPlainTLSRecord(*spec)
+	if err != nil {
+		return err
+	}
+	preview, err := marshalJSON(record)
+	if err != nil {
+		return err
+	}
+	_, conflict, err := findExistingPlainTLS(tx, *spec)
+	if err != nil {
+		return err
+	}
+	plan.Items = append(plan.Items, PlanItem{
+		Kind:        KindTLS,
+		SrcID:       spec.Key,
+		SrcTag:      row.Tag,
+		DstTag:      record.Name,
+		Action:      defaultAction(conflict, strategy),
+		Conflict:    conflict,
+		PreviewJSON: preview,
+		Warnings:    warnings,
+	})
+	return nil
 }
 
 func (s *importState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy) error {
@@ -402,16 +451,18 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		}
 	}()
 	state := &applyState{
-		report:          report,
-		plan:            normalizePlan(plan),
-		realityByKey:    map[string]*realitySpec{},
-		realityBySource: map[int64]*realitySpec{},
-		tlsIDByKey:      map[string]uint{},
-		inboundIDBySrc:  map[int64]uint{},
-		server:          destinationServer(tx),
-		onProgress:      opts.OnProgress,
-		total:           countRunnableItems(plan),
-		hostname:        resolveLinkHostname(tx, opts.Hostname),
+		report:           report,
+		plan:             normalizePlan(plan),
+		realityByKey:     map[string]*realitySpec{},
+		realityBySource:  map[int64]*realitySpec{},
+		plainTLSByKey:    map[string]*tlsCertSpec{},
+		plainTLSBySource: map[int64]*tlsCertSpec{},
+		tlsIDByKey:       map[string]uint{},
+		inboundIDBySrc:   map[int64]uint{},
+		server:           destinationServer(tx),
+		onProgress:       opts.OnProgress,
+		total:            countRunnableItems(plan),
+		hostname:         resolveLinkHostname(tx, opts.Hostname),
 	}
 	if err := state.run(opts.Context, tx, src, opts); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
@@ -430,18 +481,20 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 }
 
 type applyState struct {
-	report          *Report
-	plan            map[string]PlanItem
-	realityByKey    map[string]*realitySpec
-	realityBySource map[int64]*realitySpec
-	tlsIDByKey      map[string]uint
-	inboundIDBySrc  map[int64]uint
-	clientRefs      []ClientRef
-	server          string
-	hostname        string
-	onProgress      func(Progress)
-	current         int
-	total           int
+	report           *Report
+	plan             map[string]PlanItem
+	realityByKey     map[string]*realitySpec
+	realityBySource  map[int64]*realitySpec
+	plainTLSByKey    map[string]*tlsCertSpec
+	plainTLSBySource map[int64]*tlsCertSpec
+	tlsIDByKey       map[string]uint
+	inboundIDBySrc   map[int64]uint
+	clientRefs       []ClientRef
+	server           string
+	hostname         string
+	onProgress       func(Progress)
+	current          int
+	total            int
 }
 
 func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *sourceDB, opts ApplyOptions) error {
@@ -486,8 +539,11 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 			return err
 		}
 		spec, warnings, err := extractReality(row)
-		if err != nil || spec == nil {
+		if err != nil {
 			return err
+		}
+		if spec == nil {
+			return s.applyPlainTLS(tx, row)
 		}
 		if existing, ok := s.realityByKey[spec.Key]; ok {
 			s.realityBySource[row.ID] = existing
@@ -499,6 +555,14 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 		item := s.item(KindTLS, spec.Key)
 		s.report.warnAll(warnings)
 		if item.Action == ActionSkip {
+			// Skip means "don't create/overwrite", not "unlink": if a matching
+			// TLS record already exists, still resolve its id so inbounds keep a
+			// valid reference instead of being saved with TlsId=0.
+			if existing, found, err := findExistingRealityTLS(tx, *spec); err != nil {
+				return err
+			} else if found {
+				s.tlsIDByKey[spec.Key] = existing.Id
+			}
 			return nil
 		}
 		record, err := buildTLSRecord(*spec)
@@ -531,6 +595,68 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 		s.progress("tls", record.Name)
 		return nil
 	})
+}
+
+// applyPlainTLS mirrors the reality TLS apply path for a non-reality inbound
+// whose certificate is inline: it dedups by certificate content, honours the
+// plan item's action (skip/replace), and records the resulting TLS id so the
+// inbound can reference it.
+func (s *applyState) applyPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
+	spec, warnings, err := extractPlainTLS(row)
+	if err != nil {
+		return err
+	}
+	s.report.warnAll(warnings)
+	if spec == nil {
+		return nil
+	}
+	if existing, ok := s.plainTLSByKey[spec.Key]; ok {
+		s.plainTLSBySource[row.ID] = existing
+		s.report.Summary.TLS.Reused++
+		return nil
+	}
+	s.plainTLSByKey[spec.Key] = spec
+	s.plainTLSBySource[row.ID] = spec
+	item := s.item(KindTLS, spec.Key)
+	if item.Action == ActionSkip {
+		// Skip means "don't create/overwrite", not "unlink": resolve an existing
+		// matching record's id so referencing inbounds keep a valid TlsId.
+		if existing, found, err := findExistingPlainTLS(tx, *spec); err != nil {
+			return err
+		} else if found {
+			s.tlsIDByKey[spec.Key] = existing.Id
+		}
+		return nil
+	}
+	record, err := buildPlainTLSRecord(*spec)
+	if err != nil {
+		return err
+	}
+	if item.DstTag != "" {
+		record.Name = item.DstTag
+	}
+	existing, found, err := findExistingPlainTLS(tx, *spec)
+	if err != nil {
+		return err
+	}
+	if found && item.Action != ActionReplace {
+		s.tlsIDByKey[spec.Key] = existing.Id
+		s.report.Summary.TLS.Reused++
+		s.progress("tls", record.Name)
+		return nil
+	}
+	if found && item.Action == ActionReplace {
+		if err := tx.Delete(&existing).Error; err != nil {
+			return err
+		}
+	}
+	if err := tx.Create(&record).Error; err != nil {
+		return err
+	}
+	s.tlsIDByKey[spec.Key] = record.Id
+	s.report.Summary.TLS.Created++
+	s.progress("tls", record.Name)
+	return nil
 }
 
 func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
@@ -566,6 +692,8 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 		var reality *realitySpec
 		if spec, ok := s.realityBySource[row.ID]; ok {
 			reality = spec
+			tlsID = s.tlsIDByKey[spec.Key]
+		} else if spec, ok := s.plainTLSBySource[row.ID]; ok {
 			tlsID = s.tlsIDByKey[spec.Key]
 		}
 		mapped, err := mapInbound(row, tlsID, reality, s.server)
