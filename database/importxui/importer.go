@@ -25,6 +25,7 @@ type importState struct {
 	inboundIDBySrc  map[int64]uint
 	clientRefs      []ClientRef
 	server          string
+	hostname        string
 }
 
 func Import(srcPath string, opts Options) (*Report, error) {
@@ -73,6 +74,7 @@ func Import(srcPath string, opts Options) (*Report, error) {
 		tlsIDByKey:      map[string]uint{},
 		inboundIDBySrc:  map[int64]uint{},
 		server:          destinationServer(tx),
+		hostname:        resolveLinkHostname(tx, opts.Hostname),
 	}
 	if err := state.run(tx, src, opts); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
@@ -319,14 +321,14 @@ func (s *importState) importClients(tx *gorm.DB, src *sourceDB, strategy Strateg
 	}
 	sortStrings(emails)
 	for _, email := range emails {
-		if err := applyClient(tx, aggs[email], strategy, s.report); err != nil {
+		if err := applyClient(tx, aggs[email], strategy, s.report, s.hostname); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *Report) error {
+func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *Report, hostname string) error {
 	next, err := agg.toModel()
 	if err != nil {
 		return err
@@ -337,6 +339,9 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 		return err
 	}
 	if database.IsNotFound(err) {
+		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
+			return err
+		}
 		report.Summary.Clients.Created++
 		return tx.Create(&next).Error
 	}
@@ -347,6 +352,9 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 	case StrategyReplace:
 		next.Id = existing.Id
 		next.SubSecret = existing.SubSecret
+		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
+			return err
+		}
 		report.Summary.Clients.Merged++
 		return tx.Save(&next).Error
 	default:
@@ -354,8 +362,21 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 		if err != nil {
 			return err
 		}
+		updates := map[string]any{"inbounds": mergedInbounds}
+		// Regenerate local links over the merged inbound set so a newly
+		// merged-in inbound also appears in the subscription, while preserving
+		// the client's existing non-local (external/sub) links. Only overwrite
+		// Links when we actually built them (hostname known), to avoid
+		// clobbering an existing client's links with NULL on a host-less import.
+		mergedLinks, err := buildMergedClientLinks(tx, existing.Config, mergedInbounds, hostname, existing.Links)
+		if err != nil {
+			return err
+		}
+		if mergedLinks != nil {
+			updates["links"] = mergedLinks
+		}
 		report.Summary.Clients.Merged++
-		return tx.Model(&existing).Update("inbounds", mergedInbounds).Error
+		return tx.Model(&existing).Updates(updates).Error
 	}
 }
 

@@ -242,6 +242,11 @@ func (s *Server) Start() (err error) {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		// Expose the raw connection so the long-running 3x-ui import handlers
+		// can lift the 30s Read/Write timeouts. The gzip middleware wraps
+		// c.Writer such that http.NewResponseController can no longer reach the
+		// connection, so the deadline must be set on the conn directly.
+		ConnContext: api.SaveConnContext,
 	}
 
 	go func() {

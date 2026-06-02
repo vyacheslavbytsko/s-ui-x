@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -147,6 +148,7 @@ func (a *ApiService) ImportXui(c *gin.Context) {
 		DryRun:    dryRun,
 		Strategy:  strategy,
 		SkipAudit: true,
+		Hostname:  getHostname(c),
 	})
 	if err != nil {
 		a.recordXuiImportFailure(c, err, upload.SHA256)
@@ -255,6 +257,7 @@ func (a *ApiService) ImportXuiApply(c *gin.Context) {
 	report, err := importxui.Apply(upload.Path, plan, importxui.ApplyOptions{
 		Context:   ctx,
 		SkipAudit: true,
+		Hostname:  getHostname(c),
 		OnProgress: func(progress importxui.Progress) {
 			realtime.Publish(realtime.TopicXUIImportProgress, progress)
 		},
@@ -332,12 +335,39 @@ func (a *ApiService) beginXUIRequest(c *gin.Context) (context.Context, context.C
 	return ctx, cancel, true
 }
 
+// connContextKey carries each accepted net.Conn through the request context so
+// extendSlowRequestDeadlines can lift the connection's deadlines directly.
+type connContextKey struct{}
+
+// SaveConnContext stashes the accepted connection into its context. Wire it as
+// http.Server.ConnContext so the long-running import handlers can reach the raw
+// net.Conn.
+//
+// This indirection is required: the global gzip middleware replaces c.Writer
+// with a wrapper that embeds the gin.ResponseWriter *interface* (which has no
+// Unwrap method), so http.NewResponseController(c.Writer) cannot traverse to
+// the connection and SetWriteDeadline silently returns ErrNotSupported. Without
+// the raw conn, the 30s WriteTimeout would still sever a slow import mid-write,
+// which the browser surfaces as "Network Error".
+func SaveConnContext(ctx context.Context, conn net.Conn) context.Context {
+	return context.WithValue(ctx, connContextKey{}, conn)
+}
+
+func connFromContext(ctx context.Context) (net.Conn, bool) {
+	conn, ok := ctx.Value(connContextKey{}).(net.Conn)
+	return conn, ok
+}
+
 // extendSlowRequestDeadlines lifts the http.Server's 30s Read/Write timeouts
 // for a long-running request. Importing a large 3x-ui database can take well
 // over 30s; without this the server severs the connection mid-import, so the
 // client never receives the result and may resubmit — duplicating the import
-// and its pre-import backup (the runaway-backup symptom). No-ops on response
-// writers that do not support deadlines (e.g. httptest recorders).
+// and its pre-import backup (the runaway-backup symptom).
+//
+// It sets the deadline on the raw net.Conn from SaveConnContext. The
+// http.NewResponseController path is only a fallback for setups without the
+// ConnContext hook (e.g. tests): under the production gzip middleware it
+// no-ops, which is the exact bug this conn-based path fixes.
 //
 // SECURITY: only ever call this AFTER beginXUIRequest has authenticated,
 // scope-checked and rate-limited the caller. Moving it before that auth gate
@@ -348,8 +378,13 @@ func (a *ApiService) beginXUIRequest(c *gin.Context) (context.Context, context.C
 // beginXUIRequest. Unauthenticated callers never reach here: the /api group's
 // checkLogin middleware aborts them before any handler runs.
 func extendSlowRequestDeadlines(c *gin.Context) {
-	rc := http.NewResponseController(c.Writer)
 	deadline := time.Now().Add(xuiRequestTimeout + time.Minute)
+	if conn, ok := connFromContext(c.Request.Context()); ok {
+		_ = conn.SetReadDeadline(deadline)
+		_ = conn.SetWriteDeadline(deadline)
+		return
+	}
+	rc := http.NewResponseController(c.Writer)
 	_ = rc.SetReadDeadline(deadline)
 	_ = rc.SetWriteDeadline(deadline)
 }

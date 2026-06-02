@@ -42,6 +42,13 @@ func decodeClientInbounds(clientID uint, raw json.RawMessage, operation string) 
 }
 
 func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]map[string]string, bool) {
+	// A migrated (or freshly inserted) client can have a NULL/empty Links
+	// column. Treat that as "no links yet" rather than an error, otherwise the
+	// link-regeneration paths skip the client and its inbounds never appear in
+	// the subscription even after an inbound edit.
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return []map[string]string{}, true
+	}
 	var links []map[string]string
 	if err := json.Unmarshal(raw, &links); err != nil {
 		logger.Warningf("%s skipped client %d with invalid links: %v", operation, clientID, err)
@@ -235,10 +242,9 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 		}
 	}
 	for index, client := range clients {
-		var clientLinks []map[string]string
-		err = json.Unmarshal(client.Links, &clientLinks)
-		if err != nil {
-			return err
+		clientLinks, ok := decodeClientLinks(client.Id, client.Links, "fixed inbound link update")
+		if !ok {
+			continue
 		}
 
 		newClientLinks := []map[string]string{}

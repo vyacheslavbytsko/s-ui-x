@@ -88,6 +88,7 @@ func (a *ApiService) ImportXuiRemoteApply(c *gin.Context) {
 	report, err := importxui.ApplyFromSource(src, req.Plan, importxui.ApplyOptions{
 		Context:   ctx,
 		SkipAudit: true,
+		Hostname:  getHostname(c),
 		OnProgress: func(progress importxui.Progress) {
 			realtime.Publish(realtime.TopicXUIImportProgress, progress)
 		},

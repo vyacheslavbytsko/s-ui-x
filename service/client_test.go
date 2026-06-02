@@ -42,6 +42,19 @@ func TestDecodeClientLinks(t *testing.T) {
 	if _, ok := decodeClientLinks(7, []byte(`{`), "test"); ok {
 		t.Fatal("invalid links should be rejected")
 	}
+
+	// A NULL/empty Links column (e.g. a freshly migrated client) must decode to
+	// an empty slice, not be rejected — otherwise the link-regeneration paths
+	// skip the client and its inbounds never reach the subscription.
+	for _, raw := range []json.RawMessage{nil, []byte(""), []byte("  "), []byte("null")} {
+		got, ok := decodeClientLinks(7, raw, "test")
+		if !ok {
+			t.Fatalf("empty links %q should decode, not be rejected", raw)
+		}
+		if len(got) != 0 {
+			t.Fatalf("empty links %q decoded to %#v, want empty", raw, got)
+		}
+	}
 }
 
 func TestDepleteClientsTrafficLimitAvoidsInt64Overflow(t *testing.T) {

@@ -409,6 +409,7 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		server:          destinationServer(tx),
 		onProgress:      opts.OnProgress,
 		total:           countRunnableItems(plan),
+		hostname:        resolveLinkHostname(tx, opts.Hostname),
 	}
 	if err := state.run(opts.Context, tx, src, opts); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
@@ -435,6 +436,7 @@ type applyState struct {
 	inboundIDBySrc  map[int64]uint
 	clientRefs      []ClientRef
 	server          string
+	hostname        string
 	onProgress      func(Progress)
 	current         int
 	total           int
@@ -625,7 +627,7 @@ func (s *applyState) applyClients(ctx context.Context, tx *gorm.DB, src *sourceD
 		if item.DstTag != "" && item.DstTag != email {
 			renameAggregate(aggs[email], item.DstTag)
 		}
-		if err := applyClientAction(tx, aggs[email], item.Action, s.report); err != nil {
+		if err := applyClientAction(tx, aggs[email], item.Action, s.report, s.hostname); err != nil {
 			return err
 		}
 		s.progress("clients", item.DstTag)
@@ -806,8 +808,8 @@ func applyEndpointAction(tx *gorm.DB, endpoint *model.Endpoint, action string, r
 	return applyEndpoint(tx, endpoint, actionToStrategy(action), report)
 }
 
-func applyClientAction(tx *gorm.DB, agg *clientAggregate, action string, report *Report) error {
-	return applyClient(tx, agg, actionToStrategy(action), report)
+func applyClientAction(tx *gorm.DB, agg *clientAggregate, action string, report *Report, hostname string) error {
+	return applyClient(tx, agg, actionToStrategy(action), report, hostname)
 }
 
 func renameAggregate(agg *clientAggregate, name string) {

@@ -24,6 +24,10 @@ type Options struct {
 	OnProgress     func(Progress)
 	IncludeHistory bool
 	IncludeRouting bool
+	// Hostname is the address baked into each migrated client's subscription
+	// links (mirrors the panel host used on a normal client save). Empty
+	// leaves Links nil — the importer never emits a link with an empty host.
+	Hostname string
 }
 
 func (o Options) normalized() (Options, error) {
@@ -72,6 +76,9 @@ type ApplyOptions struct {
 	OnlyNew    bool
 	Now        func() int64
 	OnProgress func(Progress)
+	// Hostname is the address baked into each migrated client's subscription
+	// links. See Options.Hostname.
+	Hostname string
 }
 
 func (o ApplyOptions) normalized() ApplyOptions {

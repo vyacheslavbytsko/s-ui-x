@@ -36,6 +36,7 @@ func runImportXui(args []string, out io.Writer) int {
 	var profile string
 	var includeHistory bool
 	var includeRouting bool
+	var host string
 	fs.StringVar(&src, "src", "", "path to x-ui.db")
 	fs.StringVar(&remote, "remote", "", "remote source URL: ssh://user@host:/path/x-ui.db or http(s)://host:port")
 	fs.BoolVar(&dryRun, "dry-run", false, "preview import without committing changes")
@@ -51,6 +52,7 @@ func runImportXui(args []string, out io.Writer) int {
 	fs.StringVar(&profile, "profile", "", "sync profile name for --schedule")
 	fs.BoolVar(&includeHistory, "include-history", false, "import aggregated historical traffic")
 	fs.BoolVar(&includeRouting, "include-routing", false, "import Xray routing rules best-effort")
+	fs.StringVar(&host, "host", "", "hostname baked into imported clients' subscription links (defaults to the configured sub/web domain)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -122,6 +124,7 @@ func runImportXui(args []string, out io.Writer) int {
 		Strategy:       importStrategy,
 		IncludeHistory: includeHistory,
 		IncludeRouting: includeRouting,
+		Hostname:       strings.TrimSpace(host),
 	}
 	var report *importxui.Report
 	if source != nil {
