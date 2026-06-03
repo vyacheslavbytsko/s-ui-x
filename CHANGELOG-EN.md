@@ -65,6 +65,14 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   (`ipcidr: parse: no '/'`) so the core would not start. `ext:` now maps to a
   geoip rule set, a bare IP gets a host mask, and an unparseable value is dropped
   with a warning instead of breaking the whole config.
+- Migrated DNS no longer stops the core from starting: a DNS server reached over
+  a domain (`https://dns.google/...`, `tls://...`) was emitted without a
+  `domain_resolver`, which sing-box 1.13 rejects (`missing domain resolver for
+  domain server address`). Each domain-addressed server now gets a
+  `domain_resolver` — an IP-addressed server from the migration, or an appended
+  local bootstrap — the same way s-ui's own DNS editor sets it; TLS/HTTP servers
+  also get the `tls`/`headers` blocks so a migrated server matches a
+  natively-created one.
 - Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout

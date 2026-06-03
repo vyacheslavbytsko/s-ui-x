@@ -51,6 +51,12 @@
   如 `ext:geoip_RU.dat:ru`）和裸 IP 之前被原样写入 `ip_cidr`，而 sing-box 无法解析
   （`ipcidr: parse: no '/'`）导致内核无法启动。现在 `ext:` 映射为 geoip 规则集，裸 IP
   补上掩码，无法解析的值则附带警告丢弃，而不会破坏整个配置。
+- 迁移的 DNS 不再阻止内核启动：通过域名访问的 DNS 服务器（`https://dns.google/...`、
+  `tls://...`）此前未带 `domain_resolver`，而 sing-box 1.13 会拒绝（`missing domain
+  resolver for domain server address`）。现在每个域名地址的服务器都会获得
+  `domain_resolver`——来自迁移的 IP 服务器，或新增的 local 引导服务器——与 s-ui 自带
+  DNS 编辑器的设置方式一致；TLS/HTTP 服务器还会补上 `tls`/`headers` 块，使迁移的服务器
+  与手动创建的一致。
 - 完整发布说明：[`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md)。
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时

@@ -36,6 +36,7 @@ func mapXrayDNS(rawDNS map[string]any, ruleSets *[]any, seen map[string]struct{}
 			srv, ok, w := dnsServerFromAddress(v, nextTag)
 			warnings = append(warnings, w...)
 			if ok {
+				applySuiDnsDefaults(srv)
 				servers = append(servers, srv)
 				if finalTag == "" {
 					finalTag = srv["tag"].(string)
@@ -48,6 +49,7 @@ func mapXrayDNS(rawDNS map[string]any, ruleSets *[]any, seen map[string]struct{}
 			if !ok {
 				continue
 			}
+			applySuiDnsDefaults(srv)
 			servers = append(servers, srv)
 			tag := srv["tag"].(string)
 			rule := map[string]any{"action": "route", "server": tag}
@@ -84,6 +86,11 @@ func mapXrayDNS(rawDNS map[string]any, ruleSets *[]any, seen map[string]struct{}
 	if finalTag == "" && len(servers) > 0 {
 		finalTag = servers[0].(map[string]any)["tag"].(string)
 	}
+
+	// A DNS server reached over a domain needs a domain_resolver or sing-box
+	// refuses to start ("missing domain resolver for domain server address");
+	// add it the way s-ui's own DNS editor does (a DNS server tag).
+	applyDomainResolvers(&servers, nextTag)
 
 	if len(servers) > 0 {
 		out["servers"] = servers
@@ -186,4 +193,99 @@ func splitHostPortLoose(value string) (string, int) {
 		return strings.Trim(host, "[]"), port
 	}
 	return strings.Trim(value, "[]"), 0
+}
+
+// applySuiDnsDefaults brings a migrated DNS server up to the shape s-ui's own DNS
+// editor produces (createDnsServer in frontend/src/types/dns.ts): a tls block for
+// TLS-based types, a headers block for HTTP types and the protocol default port,
+// so a migrated server is identical to a natively-created one and edits cleanly
+// in the panel.
+func applySuiDnsDefaults(srv map[string]any) {
+	setDefault := func(key string, value any) {
+		if _, ok := srv[key]; !ok {
+			srv[key] = value
+		}
+	}
+	// Port is left to sing-box's protocol default (same value s-ui's defaults use)
+	// so an out-of-range source port stays dropped rather than forced to a default.
+	switch fmt.Sprint(srv["type"]) {
+	case "tls", "quic":
+		setDefault("tls", map[string]any{})
+	case "https", "h3":
+		setDefault("tls", map[string]any{})
+		setDefault("headers", map[string]any{})
+	}
+}
+
+// serverIsDomain reports whether a built DNS server is reached over a hostname
+// (not a literal IP) and therefore needs a domain_resolver. Servers without a
+// remote address (local/hosts/fakeip/dhcp/...) return false.
+func serverIsDomain(srv map[string]any) bool {
+	host, _ := srv["server"].(string)
+	host = strings.TrimSpace(host)
+	return host != "" && net.ParseIP(host) == nil
+}
+
+// applyDomainResolvers gives every domain-addressed DNS server a domain_resolver
+// (a DNS server tag), the same way s-ui's own DNS editor does via the embedded
+// Dial control. sing-box refuses to start a server addressed by a domain without
+// one. The resolver target is reused from an existing IP-addressed (or local)
+// server — matching the editor, which defaults to the first DNS tag — otherwise
+// a local bootstrap is appended. Servers that already declare a resolver, and
+// the bootstrap itself, are left untouched.
+func applyDomainResolvers(servers *[]any, nextTag func() string) {
+	asMap := func(s any) map[string]any { m, _ := s.(map[string]any); return m }
+	isBootstrapCandidate := func(m map[string]any) bool {
+		if fmt.Sprint(m["type"]) == "local" {
+			return true
+		}
+		host, _ := m["server"].(string)
+		host = strings.TrimSpace(host)
+		return host != "" && net.ParseIP(host) != nil
+	}
+
+	need := false
+	for _, s := range *servers {
+		if m := asMap(s); m != nil {
+			if _, has := m["domain_resolver"]; !has && serverIsDomain(m) {
+				need = true
+				break
+			}
+		}
+	}
+	if !need {
+		return
+	}
+
+	bootstrap := ""
+	for _, s := range *servers {
+		m := asMap(s)
+		if m == nil {
+			continue
+		}
+		if tag, _ := m["tag"].(string); tag != "" && isBootstrapCandidate(m) {
+			bootstrap = tag
+			break
+		}
+	}
+	if bootstrap == "" {
+		bootstrap = nextTag()
+		*servers = append(*servers, map[string]any{"type": "local", "tag": bootstrap})
+	}
+
+	for _, s := range *servers {
+		m := asMap(s)
+		if m == nil {
+			continue
+		}
+		if tag, _ := m["tag"].(string); tag == bootstrap {
+			continue
+		}
+		if _, has := m["domain_resolver"]; has {
+			continue
+		}
+		if serverIsDomain(m) {
+			m["domain_resolver"] = bootstrap
+		}
+	}
 }

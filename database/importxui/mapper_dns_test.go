@@ -1,6 +1,7 @@
 package importxui
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -71,6 +72,72 @@ func TestMapXrayDNS_ServersRulesStrategy(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(warnings, "\n"), "host override") {
 		t.Errorf("expected a hosts warning, got %v", warnings)
+	}
+}
+
+func TestMapXrayDNS_DomainServerGetsResolver(t *testing.T) {
+	// A domain-addressed DNS server must get a domain_resolver pointing at an
+	// IP-addressed bootstrap, or sing-box refuses to start ("missing domain
+	// resolver for domain server address"). With an IP server present (1.1.1.1),
+	// it is reused as the bootstrap — no extra server is added — and the s-ui tls
+	// block is attached, matching a natively-created server.
+	raw := map[string]any{"servers": []any{"1.1.1.1", "https://dns.google/dns-query", "tls://dns.adguard.com"}}
+	ruleSets := []any{}
+	seen := map[string]struct{}{}
+	out, _ := mapXrayDNS(raw, &ruleSets, seen)
+	servers := out["servers"].([]any)
+	if len(servers) != 3 {
+		t.Fatalf("servers = %d, want 3 (IP server reused as bootstrap, none added): %#v", len(servers), servers)
+	}
+	ipS := findServerByType(servers, "udp")
+	if ipS == nil || ipS["server"] != "1.1.1.1" {
+		t.Fatalf("expected udp 1.1.1.1 server, got %#v", servers)
+	}
+	if _, has := ipS["domain_resolver"]; has {
+		t.Errorf("the IP bootstrap must not get a domain_resolver: %#v", ipS)
+	}
+	for _, typ := range []string{"https", "tls"} {
+		srv := findServerByType(servers, typ)
+		if srv == nil {
+			t.Fatalf("missing %s server in %#v", typ, servers)
+		}
+		if srv["domain_resolver"] != ipS["tag"] {
+			t.Errorf("%s domain_resolver = %v, want %v", typ, srv["domain_resolver"], ipS["tag"])
+		}
+		if _, ok := srv["tls"]; !ok {
+			t.Errorf("%s server missing tls block (s-ui shape): %#v", typ, srv)
+		}
+	}
+	// Regression guard: no server is addressed by a domain without a resolver.
+	for _, s := range servers {
+		m := s.(map[string]any)
+		host, _ := m["server"].(string)
+		if strings.TrimSpace(host) != "" && net.ParseIP(strings.TrimSpace(host)) == nil {
+			if _, has := m["domain_resolver"]; !has {
+				t.Errorf("domain server %q has no domain_resolver — sing-box would refuse to start: %#v", host, m)
+			}
+		}
+	}
+}
+
+func TestMapXrayDNS_AllDomainAddsLocalBootstrap(t *testing.T) {
+	// When every server is domain-addressed (no IP to reuse), a local bootstrap is
+	// appended and referenced.
+	raw := map[string]any{"servers": []any{"https://dns.google/dns-query"}}
+	ruleSets := []any{}
+	seen := map[string]struct{}{}
+	out, _ := mapXrayDNS(raw, &ruleSets, seen)
+	servers := out["servers"].([]any)
+	if len(servers) != 2 {
+		t.Fatalf("servers = %d, want 2 (https + appended local bootstrap): %#v", len(servers), servers)
+	}
+	local := findServerByType(servers, "local")
+	if local == nil {
+		t.Fatalf("expected an appended local bootstrap, got %#v", servers)
+	}
+	https := findServerByType(servers, "https")
+	if https == nil || https["domain_resolver"] != local["tag"] {
+		t.Errorf("https domain_resolver = %v, want local tag %v", https["domain_resolver"], local["tag"])
 	}
 }
 
