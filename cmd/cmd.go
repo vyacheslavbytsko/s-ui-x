@@ -26,9 +26,11 @@ func ParseCmd() {
 	var subPath string
 	var reset bool
 	var show bool
+	var clearDomain bool
 	var repairFKOrphans bool
 	settingCmd.BoolVar(&reset, "reset", false, "reset all settings")
 	settingCmd.BoolVar(&show, "show", false, "show current settings")
+	settingCmd.BoolVar(&clearDomain, "clearDomain", false, "clear panel domain, listen address and web URI")
 	settingCmd.IntVar(&port, "port", 0, "set panel port")
 	settingCmd.StringVar(&path, "path", "", "set panel path")
 	settingCmd.IntVar(&subPort, "subPort", 0, "set sub port")
@@ -51,7 +53,7 @@ func ParseCmd() {
 		fmt.Println("    sync-xui       run or list saved 3x-ui sync profiles")
 		fmt.Println("    uri            Show panel URI")
 		fmt.Println("    migrate        migrate form older version")
-		fmt.Println("    setting        set/reset/show settings")
+		fmt.Println("    setting        set/reset/clear/show settings")
 		fmt.Println()
 		adminCmd.Usage()
 		fmt.Println()
@@ -125,6 +127,8 @@ func ParseCmd() {
 			showSetting()
 		case reset:
 			resetSetting()
+		case clearDomain:
+			clearWebDomain()
 		default:
 			updateSetting(port, path, subPort, subPath)
 			showSetting()

@@ -32,6 +32,22 @@ func resetSetting() {
 	}
 }
 
+func clearWebDomain() {
+	err := database.InitDB(config.GetDBPath())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	settingService := service.SettingService{}
+	if err := settingService.ClearWebDomainAndAddress(); err != nil {
+		fmt.Println("clear panel domain and address failed:", err)
+		return
+	}
+	fmt.Println("clear panel domain and address success")
+	showSetting()
+}
+
 func updateSetting(port int, path string, subPort int, subPath string) {
 	err := database.InitDB(config.GetDBPath())
 	if err != nil {

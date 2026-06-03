@@ -1,7 +1,7 @@
 #!/bin/bash
 # S-UI management menu with multilingual UI (English / Russian / Chinese).
 # Language is persisted in /etc/s-ui/lang and can be switched from
-# menu item 21.
+# menu item 22.
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -60,6 +60,7 @@ t() {
             set_username_p)      echo "请设置用户名："; return ;;
             set_password_p)      echo "请设置密码："; return ;;
             reset_settings_q)    echo "确定要将设置重置为默认值吗？"; return ;;
+            clear_domain_q)      echo "确定要清除面板的域名、监听地址和 Web URI 吗？"; return ;;
             enter_panel_port)    echo "请输入面板端口（留空则使用现有/默认值）："; return ;;
             enter_panel_path)    echo "请输入面板路径（留空则使用现有/默认值）："; return ;;
             enter_sub_port)      echo "请输入订阅端口（留空则使用现有/默认值）："; return ;;
@@ -121,6 +122,7 @@ t() {
             menu_reset_settings) echo "重置面板设置"; return ;;
             menu_set_settings)   echo "设置面板设置"; return ;;
             menu_view_settings)  echo "查看面板设置"; return ;;
+            menu_clear_domain)   echo "清除面板域名和地址"; return ;;
             menu_start)          echo "启动 S-UI"; return ;;
             menu_stop)           echo "停止 S-UI"; return ;;
             menu_restart)        echo "重启 S-UI"; return ;;
@@ -132,8 +134,8 @@ t() {
             menu_ssl)            echo "SSL 证书管理"; return ;;
             menu_ssl_cf)         echo "Cloudflare SSL 证书"; return ;;
             menu_language)       echo "语言"; return ;;
-            enter_choice_range)  echo "请输入你的选择 [0-21]："; return ;;
-            enter_valid_number)  echo "请输入正确的数字 [0-21]"; return ;;
+            enter_choice_range)  echo "请输入你的选择 [0-22]："; return ;;
+            enter_valid_number)  echo "请输入正确的数字 [0-22]"; return ;;
             lang_select)         echo "Select language / Выберите язык / 请选择语言"; return ;;
             lang_set_to)         echo "语言已设置为：$2"; return ;;
 
@@ -199,6 +201,8 @@ t() {
         ru:set_password_p)      echo "Пароль: ";;
         en:reset_settings_q)    echo "Reset settings to default values?";;
         ru:reset_settings_q)    echo "Сбросить настройки к значениям по умолчанию?";;
+        en:clear_domain_q)      echo "Clear the panel domain, listen address and web URI?";;
+        ru:clear_domain_q)      echo "Очистить домен, адрес и Web URI панели?";;
         en:enter_panel_port)    echo "Enter panel port (leave empty to keep current/default):";;
         ru:enter_panel_port)    echo "Введите порт панели (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
         en:enter_panel_path)    echo "Enter panel path (leave empty to keep current/default):";;
@@ -319,6 +323,8 @@ t() {
         ru:menu_set_settings)   echo "Настроить панель";;
         en:menu_view_settings)  echo "Show panel settings";;
         ru:menu_view_settings)  echo "Показать настройки панели";;
+        en:menu_clear_domain)   echo "Clear panel domain and address";;
+        ru:menu_clear_domain)   echo "Очистить домен и адрес панели";;
         en:menu_start)          echo "Start S-UI";;
         ru:menu_start)          echo "Запустить S-UI";;
         en:menu_stop)           echo "Stop S-UI";;
@@ -341,10 +347,10 @@ t() {
         ru:menu_ssl_cf)         echo "SSL-сертификат Cloudflare";;
         en:menu_language)       echo "Language";;
         ru:menu_language)       echo "Язык";;
-        en:enter_choice_range)  echo "Enter your choice [0-21]: ";;
-        ru:enter_choice_range)  echo "Введите ваш выбор [0-21]: ";;
-        en:enter_valid_number)  echo "Enter a valid number [0-21]";;
-        ru:enter_valid_number)  echo "Введите корректное число [0-21]";;
+        en:enter_choice_range)  echo "Enter your choice [0-22]: ";;
+        ru:enter_choice_range)  echo "Введите ваш выбор [0-22]: ";;
+        en:enter_valid_number)  echo "Enter a valid number [0-22]";;
+        ru:enter_valid_number)  echo "Введите корректное число [0-22]";;
         en:lang_select)         echo "Select language / Выберите язык / 请选择语言";;
         ru:lang_select)         echo "Select language / Выберите язык / 请选择语言";;
         en:lang_set_to)         echo "Language set to: $2";;
@@ -559,6 +565,14 @@ set_setting() {
 view_setting() {
     /usr/local/s-ui/sui setting -show
     view_uri
+    before_show_menu
+}
+
+clear_domain() {
+    confirm "$(t clear_domain_q)" "n"
+    if [[ $? == 0 ]]; then
+        /usr/local/s-ui/sui setting -clearDomain
+    fi
     before_show_menu
 }
 
@@ -867,13 +881,27 @@ ssl_cert_issue() {
     local domain=""
     read -p "Domain / Домен: " domain
     LOGD "Domain: ${domain}"
-    local currentCert=$(~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}')
+    # Detect an existing acme.sh cert for this exact domain. Scan every row
+    # (column 1) rather than only the last line, so the check stays correct
+    # when several certificates are present.
+    local force_flag=""
+    local existing=$(~/.acme.sh/acme.sh --list | awk -v d="${domain}" 'NR>1 && $1==d {print $1; exit}')
 
-    if [ "${currentCert}" == "${domain}" ]; then
-        local certInfo=$(~/.acme.sh/acme.sh --list)
-        LOGE "Certificate already exists; cannot reissue. Current data:"
-        LOGI "$certInfo"
-        exit 1
+    if [ "${existing}" == "${domain}" ]; then
+        LOGI "$(~/.acme.sh/acme.sh --list)"
+        echo -e "${yellow}Certificate already exists / Сертификат уже существует.${plain}"
+        echo -e "${yellow}Re-issuing overwrites it and counts against the Let's Encrypt"
+        echo -e "duplicate-certificate limit (5 per week per identical domain set)."
+        echo -e "Перевыпуск перезапишет его и расходует лимит Let's Encrypt"
+        echo -e "(5 дубликатов в неделю на одинаковый набор доменов).${plain}"
+        local reissue=""
+        read -p "Force re-issue? / Перевыпустить принудительно? [y/N]: " reissue
+        if [[ "${reissue}" =~ ^[Yy]$ ]]; then
+            force_flag="--force"
+        else
+            LOGI "Cancelled; existing certificate left unchanged / Отменено, сертификат не изменён."
+            return 0
+        fi
     fi
 
     certPath="/root/cert/${domain}"
@@ -887,7 +915,7 @@ ssl_cert_issue() {
         WebPort=80
     fi
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-    ~/.acme.sh/acme.sh --issue -d "${domain}" --standalone --httpport "${WebPort}"
+    ~/.acme.sh/acme.sh --issue -d "${domain}" --standalone --httpport "${WebPort}" $force_flag
     if [ $? -ne 0 ]; then
         LOGE "Issue failed; aborting."
         rm -rf ~/.acme.sh/${domain}
@@ -1041,19 +1069,20 @@ show_menu() {
   ${green}8.${plain} $(t menu_reset_settings)
   ${green}9.${plain} $(t menu_set_settings)
   ${green}10.${plain} $(t menu_view_settings)
+  ${green}11.${plain} $(t menu_clear_domain)
 ---------------------------------------------------------------
-  ${green}11.${plain} $(t menu_start)
-  ${green}12.${plain} $(t menu_stop)
-  ${green}13.${plain} $(t menu_restart)
-  ${green}14.${plain} $(t menu_status)
-  ${green}15.${plain} $(t menu_log)
-  ${green}16.${plain} $(t menu_enable_auto)
-  ${green}17.${plain} $(t menu_disable_auto)
+  ${green}12.${plain} $(t menu_start)
+  ${green}13.${plain} $(t menu_stop)
+  ${green}14.${plain} $(t menu_restart)
+  ${green}15.${plain} $(t menu_status)
+  ${green}16.${plain} $(t menu_log)
+  ${green}17.${plain} $(t menu_enable_auto)
+  ${green}18.${plain} $(t menu_disable_auto)
 ---------------------------------------------------------------
-  ${green}18.${plain} $(t menu_bbr)
-  ${green}19.${plain} $(t menu_ssl)
-  ${green}20.${plain} $(t menu_ssl_cf)
-  ${green}21.${plain} $(t menu_language)
+  ${green}19.${plain} $(t menu_bbr)
+  ${green}20.${plain} $(t menu_ssl)
+  ${green}21.${plain} $(t menu_ssl_cf)
+  ${green}22.${plain} $(t menu_language)
 ---------------------------------------------------------------
  "
     show_status s-ui
@@ -1071,17 +1100,18 @@ show_menu() {
     8)  check_install && reset_setting ;;
     9)  check_install && set_setting ;;
     10) check_install && view_setting ;;
-    11) check_install && start s-ui ;;
-    12) check_install && stop s-ui ;;
-    13) check_install && restart s-ui ;;
-    14) check_install && status s-ui ;;
-    15) check_install && show_log s-ui ;;
-    16) check_install && enable s-ui ;;
-    17) check_install && disable s-ui ;;
-    18) bbr_menu ;;
-    19) ssl_cert_issue_main ;;
-    20) ssl_cert_issue_CF ;;
-    21) choose_language ;;
+    11) check_install && clear_domain ;;
+    12) check_install && start s-ui ;;
+    13) check_install && stop s-ui ;;
+    14) check_install && restart s-ui ;;
+    15) check_install && status s-ui ;;
+    16) check_install && show_log s-ui ;;
+    17) check_install && enable s-ui ;;
+    18) check_install && disable s-ui ;;
+    19) bbr_menu ;;
+    20) ssl_cert_issue_main ;;
+    21) ssl_cert_issue_CF ;;
+    22) choose_language ;;
     *) LOGE "$(t enter_valid_number)" ;;
     esac
 }
