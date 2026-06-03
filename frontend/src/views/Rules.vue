@@ -237,19 +237,26 @@ import { actionKeys, ruleset } from '@/types/rules'
 import { FindDiff } from '@/plugins/utils'
 import { i18n } from '@/locales'
 
-const oldConfig = ref({})
+const oldConfig = ref(<any>{})
 const loading = ref(false)
 const actionMenu = ref(false)
-const appConfig = computed((): Config => {
-  return <Config> Data().config
-})
+// Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
+// replaces Data().config wholesale, driven by the 10s poll / WS events) must not wipe
+// unsaved edits, so the form binds to this clone instead of the live store object.
+const cloneStoreConfig = (): Config => JSON.parse(JSON.stringify(Data().config ?? {}))
+const appConfig = ref<Config>(cloneStoreConfig())
+
+const resyncFromStore = () => {
+  appConfig.value = cloneStoreConfig()
+  oldConfig.value = cloneStoreConfig()
+}
 
 onBeforeMount(async () => {
   loading.value = true
   while (Data().lastLoad == 0) {
     await new Promise(resolve => setTimeout(resolve, 100))
   }
-  oldConfig.value = JSON.parse(JSON.stringify(Data().config))
+  resyncFromStore()
   loading.value = false
 })
 
@@ -342,7 +349,7 @@ const saveConfig = async () => {
   loading.value = true
   const success = await Data().save("config", "set", appConfig.value)
   if (success) {
-    oldConfig.value = JSON.parse(JSON.stringify(Data().config))
+    resyncFromStore()
     loading.value = false
   }
 }
