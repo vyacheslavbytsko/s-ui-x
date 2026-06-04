@@ -8,6 +8,8 @@
     <img src="https://img.shields.io/github/v/release/deposist/s-ui-x?style=for-the-badge&label=release" alt="Release">
   </a>
   <a href="https://github.com/deposist/s-ui-x/releases">
+    <img src="https://img.shields.io/github/downloads/deposist/s-ui-x/total?style=for-the-badge&label=downloads" alt="Total downloads">
+  </a>
   <a href="https://github.com/deposist/s-ui-x/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/deposist/s-ui-x?style=for-the-badge" alt="License">
   </a>
