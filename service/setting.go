@@ -112,6 +112,28 @@ var defaultValueMap = map[string]string{
 	"telegramBackupCron":          "",
 	"telegramBackupExcludeTables": "stats,client_ips,audit_events,changes",
 	"telegramBackupMaxSizeMB":     "45",
+	// Paid Subscriptions (experimental client bot + payments module). See paidsub package.
+	"paidSubEnabled":              "false",
+	"paidSubBotToken":             "",
+	"paidSubBotPollSeconds":       "25",
+	"paidSubUpdateOffset":         "0",
+	"paidSubAutoRegister":         "false",
+	"paidSubAutoInbounds":         "[]",
+	"paidSubTrialDays":            "3",
+	"paidSubTrialVolumeGB":        "0",
+	"paidSubMaxClients":           "5000",
+	"paidSubStartRateLimitPerMin": "3",
+	"paidSubCurrency":             "RUB",
+	"paidSubStarsEnabled":         "false",
+	"paidSubYooKassaEnabled":      "false",
+	"paidSubYooKassaToken":        "",
+	"paidSubStripeEnabled":        "false",
+	"paidSubStripeToken":          "",
+	"paidSubCryptoBotEnabled":     "false",
+	"paidSubCryptoBotToken":       "",
+	"paidSubExternalEnabled":      "false",
+	"paidSubExternalUrlTemplate":  "",
+	"paidSubOrderTTLMinutes":      "30",
 	"config":                      defaultConfig,
 	"version":                     "",
 }
@@ -146,6 +168,7 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 	delete(allSetting, "sessionGeneration")
 	delete(allSetting, "config")
 	delete(allSetting, "version")
+	delete(allSetting, "paidSubUpdateOffset") // internal bot cursor, not user-facing
 
 	return &allSetting, nil
 }
@@ -721,7 +744,7 @@ func isEditableSettingKey(key string) bool {
 		return false
 	}
 	switch key {
-	case "secret", "installSalt", "sessionGeneration", "config", "version":
+	case "secret", "installSalt", "sessionGeneration", "config", "version", "paidSubUpdateOffset":
 		return false
 	default:
 		return true
@@ -749,6 +772,9 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 			return err
 		}
 		if err := validateSubscriptionSettingInput(key, obj); err != nil {
+			return err
+		}
+		if err := validatePaidSubSettingInput(key, obj); err != nil {
 			return err
 		}
 		if key == "forceCookieSecure" || key == "sessionSameSiteStrict" {
@@ -1155,6 +1181,74 @@ func validateObservabilitySettingInput(key string, value string) error {
 		if err != nil || capMB <= 0 || capMB > 1024 {
 			return common.NewError("invalid observability memory cap setting")
 		}
+	}
+	return nil
+}
+
+func validatePaidSubSettingInput(key string, value string) error {
+	switch key {
+	case "paidSubEnabled", "paidSubAutoRegister", "paidSubStarsEnabled",
+		"paidSubYooKassaEnabled", "paidSubStripeEnabled", "paidSubCryptoBotEnabled",
+		"paidSubExternalEnabled":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return common.NewError("invalid boolean setting: ", key)
+		}
+	case "paidSubBotPollSeconds":
+		if err := validateIntRange(key, value, 1, 50); err != nil {
+			return err
+		}
+	case "paidSubTrialDays":
+		if err := validateIntRange(key, value, 0, 3650); err != nil {
+			return err
+		}
+	case "paidSubTrialVolumeGB":
+		if err := validateIntRange(key, value, 0, 1048576); err != nil {
+			return err
+		}
+	case "paidSubMaxClients":
+		if err := validateIntRange(key, value, 0, 10000000); err != nil {
+			return err
+		}
+	case "paidSubStartRateLimitPerMin":
+		if err := validateIntRange(key, value, 0, 1000); err != nil {
+			return err
+		}
+	case "paidSubOrderTTLMinutes":
+		if err := validateIntRange(key, value, 1, 1440); err != nil {
+			return err
+		}
+	case "paidSubAutoInbounds":
+		if value != "" {
+			var ids []uint
+			if err := json.Unmarshal([]byte(value), &ids); err != nil {
+				return common.NewError("paidSubAutoInbounds must be a JSON array of inbound ids")
+			}
+		}
+	case "paidSubCurrency":
+		v := strings.ToUpper(strings.TrimSpace(value))
+		if len(v) != 3 {
+			return common.NewError("paidSubCurrency must be a 3-letter code")
+		}
+	case "paidSubExternalUrlTemplate":
+		if value != "" {
+			if len(value) > 2048 {
+				return common.NewError("paidSubExternalUrlTemplate is too long")
+			}
+			if !strings.HasPrefix(value, "https://") {
+				return common.NewError("paidSubExternalUrlTemplate must start with https://")
+			}
+			if strings.ContainsAny(value, " \t\r\n#") {
+				return common.NewError("paidSubExternalUrlTemplate must not contain spaces or a fragment")
+			}
+		}
+	}
+	return nil
+}
+
+func validateIntRange(key string, value string, min int, max int) error {
+	n, err := strconv.Atoi(value)
+	if err != nil || n < min || n > max {
+		return common.NewErrorf("invalid setting %s: must be an integer in [%d, %d]", key, min, max)
 	}
 	return nil
 }

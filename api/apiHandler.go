@@ -3,6 +3,8 @@ package api
 import (
 	"strings"
 
+	"github.com/deposist/s-ui-x/paidsub"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -91,6 +93,13 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	observability := g.Group("/observability")
 	observability.GET("/history", a.ApiService.GetObservabilityHistory)
 	observability.GET("/core-history", a.ApiService.GetCoreHistory)
+
+	// Experimental Paid Subscriptions module owns its own routes; mount them on
+	// the already-authenticated (session + CSRF) browser group.
+	paidsub.RegisterRoutes(g, paidsub.Deps{
+		LoginUser: GetLoginUser,
+		Audit:     a.ApiService.recordAudit,
+	})
 }
 
 func (a *APIHandler) save(c *gin.Context) {

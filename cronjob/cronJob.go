@@ -66,6 +66,10 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 	if _, err := c.cron.AddJob("@every 1h", NewAuditGCJob()); err != nil {
 		return err
 	}
+	// Paid Subscriptions: poll out-of-band payments + expire stale orders
+	if _, err := c.cron.AddJob("@every 20s", NewPaidSubPollJob()); err != nil {
+		return err
+	}
 
 	c.cron.Start()
 

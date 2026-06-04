@@ -148,6 +148,7 @@ export default {
     audit: "Audit",
     migrateXui: "3x-ui Migration",
     migrateXuiSchedule: "3x-ui Sync",
+    paidSub: "Paid Subscriptions",
     settings: "Settings",
   },
   telegram: {

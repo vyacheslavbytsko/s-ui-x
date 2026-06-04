@@ -12,6 +12,7 @@ import (
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/ipmonitor"
 	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/paidsub"
 	"github.com/deposist/s-ui-x/service"
 	"github.com/deposist/s-ui-x/sub"
 	"github.com/deposist/s-ui-x/web"
@@ -71,6 +72,12 @@ func (a *APP) Init() error {
 
 	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
 
+	// Experimental Paid Subscriptions module owns its own schema; create it
+	// idempotently at startup. Non-fatal: a failure here must not block core.
+	if err := paidsub.EnsureSchema(database.GetDB()); err != nil {
+		logger.Warning("failed to ensure paidsub schema: ", err)
+	}
+
 	return nil
 }
 
@@ -99,6 +106,11 @@ func (a *APP) Start() error {
 	if err != nil {
 		return err
 	}
+
+	// Experimental Paid Subscriptions client bot. Self-gates on paidSubEnabled
+	// internally, so starting unconditionally is safe and lets the admin toggle
+	// it at runtime without a restart.
+	paidsub.StartBot()
 
 	err = a.configService.StartCore()
 	if err != nil {
@@ -132,6 +144,11 @@ func (a *APP) Stop() {
 	defer telegramCancel()
 	if err := service.StopTelegramNotifier(telegramCtx); err != nil {
 		logger.Warning("stop telegram notifier err:", err)
+	}
+	paidSubCtx, paidSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer paidSubCancel()
+	if err := paidsub.StopBot(paidSubCtx); err != nil {
+		logger.Warning("stop paidsub bot err:", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

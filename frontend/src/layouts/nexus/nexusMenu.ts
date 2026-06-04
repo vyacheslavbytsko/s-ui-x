@@ -18,6 +18,7 @@ export const nexusMenu: NexusMenuItem[] = [
   { title: 'pages.dns', icon: 'mdi-dns', path: '/dns', singBoxSettings: true },
   { title: 'pages.admins', icon: 'mdi-account-tie', path: '/admins' },
   { title: 'pages.telegram', icon: 'mdi-send', path: '/telegram' },
+  { title: 'pages.paidSub', icon: 'mdi-cash-multiple', path: '/paid-subscriptions' },
   { title: 'pages.audit', icon: 'mdi-shield-search', path: '/audit' },
   { title: 'pages.settings', icon: 'mdi-cog', path: '/settings' },
 ]

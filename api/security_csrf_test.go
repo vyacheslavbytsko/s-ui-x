@@ -45,6 +45,8 @@ func securityCSRFPostRoutes() []string {
 		"/api/telegram/backup",
 		"/api/telegram/backup/run",
 		"/api/ip-monitor/alice/clear",
+		"/api/paidsub/bindings",
+		"/api/paidsub/tariffs",
 	}
 }
 

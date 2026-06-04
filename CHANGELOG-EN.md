@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta1] - 2026-06-04 - experimental Paid Subscriptions Telegram bot
+
+- New **experimental "Paid Subscriptions" module** (off by default, isolated
+  from the core). A client-facing Telegram bot on a separate, encrypted token
+  lets a bound client get their subscription link, per-inbound share links and
+  server-rendered QR codes, and view current usage (used/limit + progress bar,
+  days left, online status, lifetime traffic).
+- **Telegram ID ↔ client binding** is managed on a new **Paid Subscriptions**
+  admin page (separate left-menu item); the existing client card and the core
+  `clients` table are not touched (bindings live in their own table).
+- **Self-registration with a trial:** an unknown user opening the bot can be
+  auto-registered with admin-selected inbounds and a configurable trial period,
+  guarded by a global cap and a per-user `/start` rate limit.
+- **Tariff-based payments, multi-provider:** admins define tariffs (name, price,
+  +days, +traffic); clients pay/renew in the bot and the subscription extends
+  automatically. Selectable providers (several at once): Telegram Stars (XTR),
+  YooKassa, Stripe, CryptoBot, and an external payment link. Renewals are
+  idempotent, amounts are verified server-side against the order snapshot, and
+  zero-price tariffs cannot grant a renewal.
+- The module lives in its own `paidsub` package behind a single `paidSubEnabled`
+  flag with its own HTTP endpoints and DB tables (created idempotently at
+  startup); the UI is a lazy-loaded page marked *experimental*. For production,
+  set `SUI_SECRETBOX_KEY` so payment tokens are encrypted with a key kept
+  outside the database (the UI warns when unset).
+- Release notes: [`docs/releases/v1.5.7-beta1.md`](docs/releases/v1.5.7-beta1.md).
+
 ## [1.5.6] - 2026-06-04 - first stable 1.5.6: 3x-ui import-correctness fixes
 
 - First stable release of the 1.5.6 line, consolidating 1.5.6-beta1..beta9 — the

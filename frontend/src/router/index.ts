@@ -92,6 +92,11 @@ const routes = [
         component: () => import('@/views/MigrateXuiSchedule.vue'),
       },
       {
+        path: '/paid-subscriptions',
+        name: 'pages.paidSub',
+        component: () => import('@/views/paidsub/PaidSubscriptions.vue'),
+      },
+      {
         path: '/settings',
         name: 'pages.settings',
         component: () => import('@/views/Settings.vue'),

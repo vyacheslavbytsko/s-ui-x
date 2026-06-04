@@ -30,6 +30,10 @@ var (
 		"telegramProxyPassword":    {},
 		"telegramProxyURL":         {},
 		"telegramProxyUsername":    {},
+		"paidSubBotToken":          {},
+		"paidSubYooKassaToken":     {},
+		"paidSubStripeToken":       {},
+		"paidSubCryptoBotToken":    {},
 	}
 )
 
