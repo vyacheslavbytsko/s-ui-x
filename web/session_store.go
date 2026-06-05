@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/service"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gorilla/securecookie"
 	gsessions "github.com/gorilla/sessions"
@@ -98,6 +99,20 @@ func (s *SQLiteSessionStore) Save(_ *http.Request, w http.ResponseWriter, sessio
 		}
 		http.SetCookie(w, gsessions.NewCookie(session.Name(), "", session.Options))
 		return nil
+	}
+
+	// Regenerate the session ID when the login flow requests it: erase the old
+	// row and clear the ID so a fresh one is minted below. This defeats session
+	// fixation — a pre-auth (CSRF) session cookie cannot survive authentication
+	// under the same ID. The marker must not persist into the stored session data.
+	if _, regenerate := session.Values[service.SessionRegenerateKey]; regenerate {
+		delete(session.Values, service.SessionRegenerateKey)
+		if session.ID != "" {
+			if err := s.erase(session.ID); err != nil {
+				return err
+			}
+			session.ID = ""
+		}
 	}
 
 	if session.ID == "" {

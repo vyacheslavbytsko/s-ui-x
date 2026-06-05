@@ -37,6 +37,9 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration
 		s.Set(loginSessionGeneration, sessionGeneration)
 	}
 	ResetSessionCSRF(s)
+	// Rotate the session ID on login so a planted pre-auth (CSRF) session cannot
+	// survive authentication under an attacker-known ID (session-fixation defense).
+	s.Set(service.SessionRegenerateKey, true)
 	s.Options(options)
 
 	return s.Save()
