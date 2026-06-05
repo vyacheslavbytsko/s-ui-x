@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/deposist/s-ui-x/database/importxui"
 	"gorm.io/driver/sqlite"
@@ -23,10 +22,23 @@ type Source struct {
 	Username string
 	Password string
 	Client   *http.Client
+	// RestrictPrivate blocks loopback and private/LAN targets (not just
+	// infrastructure). The API layer sets it for untrusted, token-scoped
+	// requests; trusted admin-session/CLI/cron paths leave it off so same-host
+	// and LAN migrations keep working. Infrastructure/metadata addresses are
+	// blocked regardless (see ssrf_guard.go).
+	RestrictPrivate bool
 }
 
 func New(baseURL, username, password string) Source {
 	return Source{BaseURL: baseURL, Username: username, Password: password}
+}
+
+// WithRestrictPrivate returns a copy of the source with the private/LAN block
+// policy set. Used by the API import handlers for untrusted callers.
+func (s Source) WithRestrictPrivate(v bool) Source {
+	s.RestrictPrivate = v
+	return s
 }
 
 func (s Source) Acquire(ctx context.Context) (string, func(), error) {
@@ -37,9 +49,12 @@ func (s Source) Acquire(ctx context.Context) (string, func(), error) {
 	if baseURL == "" {
 		return "", nil, fmt.Errorf("missing xui http base url")
 	}
+	if err := validateBaseURL(ctx, baseURL, s.RestrictPrivate); err != nil {
+		return "", nil, fmt.Errorf("xuihttp: refusing to fetch remote x-ui panel: %w", err)
+	}
 	client := s.Client
 	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+		client = newGuardedClient(s.RestrictPrivate)
 	}
 	jar := map[string]string{}
 	if err := s.login(ctx, client, baseURL, jar); err != nil {

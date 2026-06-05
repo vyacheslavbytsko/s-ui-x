@@ -44,6 +44,45 @@ func TestLinkGeneratorTUICDefaultsUDPRelayMode(t *testing.T) {
 	}
 }
 
+// TestLinkGeneratorMalformedAddrsDoesNotPanic feeds an addr map missing
+// server/remark and carrying non-bool tls.enabled / non-string alpn elements.
+// Before the comma-ok hardening (Q4) these tripped interface-conversion panics
+// in the subscription request goroutine; now every link type degrades to a
+// partial/empty link instead.
+func TestLinkGeneratorMalformedAddrsDoesNotPanic(t *testing.T) {
+	malformedAddrs := json.RawMessage(`[
+		{"tls":{"enabled":"yes"}},
+		{"tls":{"enabled":true,"alpn":[123],"reality":{"enabled":"yes"}}}
+	]`)
+	clientConfig := json.RawMessage(`{
+		"vless": {"uuid":"11111111-1111-4111-8111-111111111111","flow":"xtls-rprx-vision"},
+		"trojan": {"password":"secret"},
+		"vmess": {"uuid":"11111111-1111-4111-8111-111111111111"},
+		"shadowsocks": {"password":"secret"},
+		"socks": {"username":"u","password":"p"},
+		"http": {"username":"u","password":"p"},
+		"naive": {"username":"u","password":"p"},
+		"hysteria": {"auth_str":"a"},
+		"hysteria2": {"password":"secret"},
+		"tuic": {"uuid":"11111111-1111-4111-8111-111111111111","password":"secret"},
+		"anytls": {"password":"secret"}
+	}`)
+	for _, typ := range InboundTypeWithLink {
+		t.Run(typ, func(t *testing.T) {
+			inbound := &model.Inbound{
+				Type:    typ,
+				Tag:     "t",
+				Addrs:   malformedAddrs,
+				OutJson: json.RawMessage(`{}`),
+				Options: json.RawMessage(`{"listen_port":443,"method":"aes-128-gcm"}`),
+			}
+			// The assertion is simply that this does not panic; a malformed
+			// addr may legitimately yield empty or partial links.
+			_ = LinkGenerator(clientConfig, inbound, "example.com")
+		})
+	}
+}
+
 func generateTUICLinkForTest(t *testing.T, outJSON string) string {
 	t.Helper()
 

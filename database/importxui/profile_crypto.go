@@ -1,6 +1,7 @@
 package importxui
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -11,16 +12,22 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-x/config"
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 	"golang.org/x/crypto/hkdf"
 	"gorm.io/gorm"
 )
 
 const profileKeySalt = "xui-sync-profile-v1"
+
+// profileSecretWarning ensures the "no out-of-database secret configured"
+// guidance is logged at most once per process.
+var profileSecretWarning sync.Once
 
 type SyncProfileSource struct {
 	Type               string `json:"type"`
@@ -204,11 +211,11 @@ func EncryptProfileSource(plaintext []byte) ([]byte, []byte, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return nil, nil, err
 	}
-	key, err := profileEncryptionKey(salt)
+	keys, err := profileEncryptionKeys(salt)
 	if err != nil {
 		return nil, nil, err
 	}
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(keys[0])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -226,10 +233,25 @@ func EncryptProfileSource(plaintext []byte) ([]byte, []byte, error) {
 }
 
 func DecryptProfileSource(ciphertext []byte, salt []byte) ([]byte, error) {
-	key, err := profileEncryptionKey(salt)
+	keys, err := profileEncryptionKeys(salt)
 	if err != nil {
 		return nil, err
 	}
+	var lastErr error
+	for _, key := range keys {
+		plaintext, err := decryptWithProfileKey(ciphertext, key)
+		if err == nil {
+			return plaintext, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("profile ciphertext could not be decrypted")
+	}
+	return nil, lastErr
+}
+
+func decryptWithProfileKey(ciphertext []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -246,7 +268,11 @@ func DecryptProfileSource(ciphertext []byte, salt []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, payload, nil)
 }
 
-func profileEncryptionKey(rowSalt []byte) ([]byte, error) {
+// profileEncryptionKeys returns the ordered AES-256 key candidates for rowSalt.
+// keys[0] is used for encryption; DecryptProfileSource tries every candidate so
+// a profile sealed under an older seed still opens (and is re-sealed under the
+// preferred seed on its next save).
+func profileEncryptionKeys(rowSalt []byte) ([][]byte, error) {
 	if keyFile := strings.TrimSpace(os.Getenv("XUI_PROFILE_KEY_FILE")); keyFile != "" {
 		// #nosec G304 G703 -- keyFile path comes from the operator-set XUI_PROFILE_KEY_FILE env var.
 		raw, err := os.ReadFile(keyFile)
@@ -257,16 +283,80 @@ func profileEncryptionKey(rowSalt []byte) ([]byte, error) {
 		if len(key) != 32 {
 			return nil, fmt.Errorf("XUI_PROFILE_KEY_FILE must contain 32 bytes raw or base64")
 		}
-		return key, nil
+		return [][]byte{key}, nil
 	}
-	seed := []byte(config.GetSecret())
+	if strings.TrimSpace(os.Getenv("SUI_SECRET")) == "" {
+		profileSecretWarning.Do(func() {
+			logger.Warning("xui-sync: neither SUI_SECRET nor XUI_PROFILE_KEY_FILE is set; remote-panel credentials are encrypted with a key derived from the random settings.secret stored in the same database (falling back to a predictable default only if it is unavailable). Set SUI_SECRET or XUI_PROFILE_KEY_FILE so the credentials can be recovered only with an out-of-database secret.")
+		})
+	}
 	salt := append([]byte(profileKeySalt+":"), rowSalt...)
-	reader := hkdf.New(sha256.New, seed, salt, nil)
-	key := make([]byte, 32)
-	if _, err := io.ReadFull(reader, key); err != nil {
-		return nil, err
+	seeds := profileSeeds()
+	keys := make([][]byte, 0, len(seeds))
+	for _, seed := range seeds {
+		reader := hkdf.New(sha256.New, seed, salt, nil)
+		key := make([]byte, 32)
+		if _, err := io.ReadFull(reader, key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
 	}
-	return key, nil
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("no profile encryption seed available")
+	}
+	return keys, nil
+}
+
+// profileSeeds returns the HKDF seed material for profile encryption, preferred
+// first: an explicit SUI_SECRET (out-of-database), then the random per-install
+// settings.secret, then the legacy config.GetSecret() value (predictable
+// name:path). EncryptProfileSource uses the first; DecryptProfileSource tries
+// them ALL, so every seed that could have sealed a profile stays a decrypt
+// candidate — e.g. a profile sealed under settings.secret still opens after the
+// operator later sets SUI_SECRET (the very transition the at-rest warning
+// recommends). The candidates are independent (not else-chained) for exactly
+// this reason.
+func profileSeeds() [][]byte {
+	var seeds [][]byte
+	if env := strings.TrimSpace(os.Getenv("SUI_SECRET")); env != "" {
+		seeds = appendSeed(seeds, []byte(env))
+	}
+	if secret, ok := settingsSecret(); ok {
+		seeds = appendSeed(seeds, secret)
+	}
+	seeds = appendSeed(seeds, []byte(config.GetSecret()))
+	return seeds
+}
+
+// settingsSecret reads the random per-install secret (settings.secret) straight
+// from the settings table. It is stored in plaintext and auto-initialized by the
+// panel at startup; importxui reads it directly to avoid depending on the
+// service layer. Returns ok=false before the database or secret exist.
+func settingsSecret() ([]byte, bool) {
+	db := database.GetDB()
+	if db == nil {
+		return nil, false
+	}
+	var setting model.Setting
+	if err := db.Where("key = ?", "secret").First(&setting).Error; err != nil {
+		return nil, false
+	}
+	if strings.TrimSpace(setting.Value) == "" {
+		return nil, false
+	}
+	return []byte(setting.Value), true
+}
+
+func appendSeed(seeds [][]byte, seed []byte) [][]byte {
+	if len(seed) == 0 {
+		return seeds
+	}
+	for _, existing := range seeds {
+		if bytes.Equal(existing, seed) {
+			return seeds
+		}
+	}
+	return append(seeds, seed)
 }
 
 func bytesOrBase64Key(raw []byte) []byte {

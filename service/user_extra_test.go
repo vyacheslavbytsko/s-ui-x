@@ -189,7 +189,7 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := userService.ChangePass(strconv.FormatUint(uint64(admin.Id), 10), "old-password", "admin-renamed", "new-password"); err != nil {
+	if err := userService.ChangePass("admin", "old-password", "admin-renamed", "new-password"); err != nil {
 		t.Fatal(err)
 	}
 

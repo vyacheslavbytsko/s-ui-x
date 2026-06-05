@@ -20,6 +20,7 @@ import (
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util/ssrf"
 
 	"github.com/gin-gonic/gin"
 )
@@ -45,7 +46,7 @@ func (a *ApiService) ImportXuiRemotePlan(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	src, err := apiSourceFromConfig(req.Source)
+	src, err := apiSourceFromConfig(req.Source, a.remoteImportIsUntrusted(c))
 	if err != nil {
 		xuiImportError(c, err)
 		return
@@ -80,7 +81,7 @@ func (a *ApiService) ImportXuiRemoteApply(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	src, err := apiSourceFromConfig(req.Source)
+	src, err := apiSourceFromConfig(req.Source, a.remoteImportIsUntrusted(c))
 	if err != nil {
 		xuiImportError(c, err)
 		return
@@ -124,6 +125,12 @@ func (a *ApiService) SaveXUISyncProfile(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		xuiImportError(c, err)
 		return
+	}
+	if a.remoteImportIsUntrusted(c) {
+		if err := validateRemoteSyncSourceSSRF(c.Request.Context(), input.Source); err != nil {
+			xuiImportError(c, err)
+			return
+		}
 	}
 	profile, err := importxui.SaveSyncProfile(input)
 	if err == nil {
@@ -209,7 +216,30 @@ func remoteEnabled(c *gin.Context) bool {
 	return false
 }
 
-func apiSourceFromConfig(source importxui.SyncProfileSource) (importxui.Source, error) {
+// remoteImportIsUntrusted reports whether the caller is a scoped API token
+// rather than a full admin session. Only such callers are restricted from
+// reaching loopback/private hosts via the remote x-ui importer (S1 SSRF guard);
+// admin sessions, admin-scoped tokens, the CLI and cron stay unrestricted so
+// same-host and LAN migrations keep working. Infrastructure/cloud-metadata
+// targets are blocked for everyone in the importer's guarded client.
+func (a *ApiService) remoteImportIsUntrusted(c *gin.Context) bool {
+	scope, hasScope := requestTokenScope(c)
+	return hasScope && scope != "admin"
+}
+
+// validateRemoteSyncSourceSSRF rejects an http(s) sync-profile source that
+// points at a disallowed address, so an untrusted token cannot store a profile
+// the (trusted) cron job would later fetch. Non-http sources are not an SSRF
+// vector here.
+func validateRemoteSyncSourceSSRF(ctx context.Context, source importxui.SyncProfileSource) error {
+	baseURL := firstNonEmptyString(source.BaseURL, source.URL)
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		return nil
+	}
+	return ssrf.ValidateOutboundURL(ctx, baseURL, "http", "https")
+}
+
+func apiSourceFromConfig(source importxui.SyncProfileSource, restrictPrivate bool) (importxui.Source, error) {
 	switch source.Type {
 	case "file":
 		return xfile.New(source.URL), nil
@@ -244,7 +274,7 @@ func apiSourceFromConfig(source importxui.SyncProfileSource) (importxui.Source, 
 		return cfg, nil
 	case "xuihttp":
 		baseURL := firstNonEmptyString(source.BaseURL, source.URL)
-		return xuihttp.New(baseURL, source.Username, source.Password), nil
+		return xuihttp.New(baseURL, source.Username, source.Password).WithRestrictPrivate(restrictPrivate), nil
 	default:
 		if strings.HasPrefix(source.URL, "ssh://") {
 			parsed, err := xssh.New(source.URL)
@@ -256,7 +286,7 @@ func apiSourceFromConfig(source importxui.SyncProfileSource) (importxui.Source, 
 			return parsed, nil
 		}
 		if strings.HasPrefix(source.URL, "http://") || strings.HasPrefix(source.URL, "https://") {
-			return xuihttp.New(source.URL, source.Username, source.Password), nil
+			return xuihttp.New(source.URL, source.Username, source.Password).WithRestrictPrivate(restrictPrivate), nil
 		}
 		return nil, fmt.Errorf("unsupported xui source type")
 	}

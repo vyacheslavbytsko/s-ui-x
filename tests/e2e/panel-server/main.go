@@ -57,7 +57,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	engine.Use(middleware.AdminSecurityHeaders())
+	engine.Use(middleware.AdminSecurityHeaders(api.RequestIsHTTPS))
 	engine.Use(sessions.Sessions("s-ui", store))
 	groupAPIV2 := engine.Group(baseURL + "apiv2")
 	apiv2 := api.NewAPIv2Handler(groupAPIV2, api.WithRuntime(runtime))

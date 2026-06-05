@@ -155,6 +155,18 @@ func IsBlockedAddr(addr netip.Addr) bool {
 	return isBlockedAddr(addr)
 }
 
+// IsInfrastructureAddr reports whether addr is one that an outbound integration
+// must never target regardless of caller trust: link-local (which covers the
+// 169.254.169.254 cloud-metadata endpoint), multicast, and the unspecified
+// address. Unlike IsBlockedAddr it does NOT reject loopback or RFC1918 private
+// ranges, so a trusted same-host or LAN migration remains possible while the
+// crown-jewel SSRF target (cloud metadata) stays blocked for everyone.
+func IsInfrastructureAddr(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() ||
+		addr.IsMulticast() || addr.IsUnspecified()
+}
+
 func isBlockedAddr(addr netip.Addr) bool {
 	addr = addr.Unmap()
 	if !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() ||

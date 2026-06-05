@@ -90,6 +90,37 @@ func TestGetRemoteIpRejectsSpoofedXFFFromUntrustedClient(t *testing.T) {
 	}
 }
 
+// TestRequestIsHTTPSGatesForwardedProtoByTrustedProxy locks the A6 gate that the
+// HSTS middleware now reuses: X-Forwarded-Proto is honored only from a trusted
+// proxy, so a spoofed header from an untrusted client cannot mark the request
+// HTTPS (and thus cannot trigger HSTS).
+func TestRequestIsHTTPSGatesForwardedProtoByTrustedProxy(t *testing.T) {
+	t.Run("untrusted client spoofing https", func(t *testing.T) {
+		t.Setenv("SUI_TRUSTED_PROXIES", "")
+		c := makeContext(t, "203.0.113.5:1234", "")
+		c.Request.Header.Set("X-Forwarded-Proto", "https")
+		if RequestIsHTTPS(c) {
+			t.Fatal("X-Forwarded-Proto from an untrusted client must not be treated as HTTPS")
+		}
+	})
+	t.Run("trusted proxy forwarding https", func(t *testing.T) {
+		t.Setenv("SUI_TRUSTED_PROXIES", "203.0.113.0/24")
+		c := makeContext(t, "203.0.113.5:1234", "")
+		c.Request.Header.Set("X-Forwarded-Proto", "https")
+		if !RequestIsHTTPS(c) {
+			t.Fatal("X-Forwarded-Proto: https from a trusted proxy should be treated as HTTPS")
+		}
+	})
+	t.Run("trusted proxy forwarding http", func(t *testing.T) {
+		t.Setenv("SUI_TRUSTED_PROXIES", "203.0.113.0/24")
+		c := makeContext(t, "203.0.113.5:1234", "")
+		c.Request.Header.Set("X-Forwarded-Proto", "http")
+		if RequestIsHTTPS(c) {
+			t.Fatal("X-Forwarded-Proto: http must not be treated as HTTPS")
+		}
+	})
+}
+
 func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	c := makeContext(t, "203.0.113.5:1234", "")
 	userAgent := "Mozilla/5.0 test agent"

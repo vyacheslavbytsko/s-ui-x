@@ -11,6 +11,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// asBool returns v as a bool, or false when v is nil or not a bool. Clash config
+// maps come from operator/import-supplied outbound data and may be malformed;
+// these accessors keep a bad value from panicking the subscription goroutine.
+func asBool(v interface{}) bool {
+	b, _ := v.(bool)
+	return b
+}
+
+// asString returns v as a string, or "" when v is nil or not a string.
+func asString(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
 type ClashService struct {
 	service.SettingService
 	JsonService
@@ -227,7 +241,7 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 			}
 		}
 		if isTls {
-			proxy["tls"] = tls["enabled"]
+			proxy["tls"] = asBool(tls["enabled"])
 
 			// ALPN if exists
 			if alpn, ok := tls["alpn"].([]interface{}); ok {
@@ -235,7 +249,7 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 			}
 
 			// Add reality if exists
-			if reality, ok := tls["reality"].(map[string]interface{}); ok && reality["enabled"].(bool) {
+			if reality, ok := tls["reality"].(map[string]interface{}); ok && asBool(reality["enabled"]) {
 				reality_opts := make(map[string]interface{})
 				if pbk, ok := reality["public_key"].(string); ok {
 					reality_opts["public-key"] = pbk
@@ -263,11 +277,11 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				proxy["skip-cert-verify"] = insecure
 			}
 			// ech outbounds
-			if ech, ok := tls["ech"].(map[string]interface{}); ok && ech["enabled"].(bool) {
+			if ech, ok := tls["ech"].(map[string]interface{}); ok && asBool(ech["enabled"]) {
 				ech_config, _ := ech["config"].([]interface{})
 				ech_string := ""
 				for i := 1; i < len(ech_config)-1; i++ {
-					ech_string += ech_config[i].(string)
+					ech_string += asString(ech_config[i])
 				}
 				proxy["ech-opts"] = map[string]interface{}{
 					"enable": true,
@@ -390,7 +404,7 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		}
 
 		proxies = append(proxies, proxy)
-		proxyTags = append(proxyTags, obMap["tag"].(string))
+		proxyTags = append(proxyTags, asString(obMap["tag"]))
 	}
 
 	var proxyGroups []map[string]interface{}
@@ -400,7 +414,7 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 	}
 
 	proxyGroups[1]["proxies"] = proxyTags
-	proxyGroups[0]["proxies"] = append([]string{proxyGroups[1]["name"].(string)}, proxyTags...)
+	proxyGroups[0]["proxies"] = append([]string{asString(proxyGroups[1]["name"])}, proxyTags...)
 
 	// Merge proxies and proxy groups if exist
 	var output map[string]interface{}

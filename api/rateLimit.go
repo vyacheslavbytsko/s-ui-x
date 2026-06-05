@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -135,6 +136,18 @@ func resetLoginFailures(key string) {
 	loginRateLimitMu.Lock()
 	defer loginRateLimitMu.Unlock()
 	delete(loginRateLimits, key)
+}
+
+// loginRateLimitUserKey namespaces the per-username login throttle so it never
+// collides with the per-IP key (raw IPs are used unprefixed). The per-username
+// limit caps a DISTRIBUTED brute-force on one account that rotates source IPs,
+// which the per-IP limit alone cannot stop.
+func loginRateLimitUserKey(username string) string {
+	u := strings.ToLower(strings.TrimSpace(username))
+	if u == "" {
+		u = "unknown"
+	}
+	return "user|" + u
 }
 
 func gcWSHandshakeRateLimitsLocked(now time.Time) {

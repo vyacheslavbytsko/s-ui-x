@@ -218,10 +218,13 @@ func (s *UserService) DeleteUser(actorUsername string, currentPass string, targe
 	return result, err
 }
 
-func (s *UserService) ChangePass(id string, oldPass string, newUser string, newPass string) error {
+// ChangePass updates the credentials of the user identified by username. The
+// caller passes the AUTHENTICATED session user's name (never a client-supplied
+// id), so an admin can only change their own account, not another admin's.
+func (s *UserService) ChangePass(username string, oldPass string, newUser string, newPass string) error {
 	db := database.GetDB()
 	user := &model.User{}
-	err := db.Model(model.User{}).Where("id = ?", id).First(user).Error
+	err := db.Model(model.User{}).Where("username = ?", username).First(user).Error
 	if err != nil || database.IsNotFound(err) {
 		return err
 	}

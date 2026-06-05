@@ -3,7 +3,7 @@ WORKDIR /app
 COPY frontend/ ./
 RUN npm install && npm run build
 
-FROM golang:1.26.3-alpine AS backend-builder
+FROM golang:1.26.4-alpine AS backend-builder
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT

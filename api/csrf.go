@@ -31,7 +31,7 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 		Path:     "/",
 		Secure:   resolveCookieSecure(c, &a.SettingService),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: resolveCookieSameSite(&a.SettingService),
 	}
 	if maxAge, err := a.SettingService.GetSessionMaxAge(); err == nil && maxAge > 0 {
 		options.MaxAge = maxAge * 60

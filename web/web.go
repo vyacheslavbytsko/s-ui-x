@@ -98,7 +98,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if webDomain != "" {
 		engine.Use(middleware.DomainValidator(webDomain))
 	}
-	engine.Use(middleware.AdminSecurityHeaders())
+	engine.Use(middleware.AdminSecurityHeaders(api.RequestIsHTTPS))
 
 	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {

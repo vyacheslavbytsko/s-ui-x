@@ -20,6 +20,21 @@ type LinkParam struct {
 
 const defaultTUICUDPRelayMode = "quic"
 
+// mapString returns m[key] as a string, or "" when the key is absent or not a
+// string. Inbound/addr maps come from operator-supplied or imported config and
+// may be malformed; using these accessors keeps a bad value from panicking the
+// subscription request goroutine.
+func mapString(m map[string]interface{}, key string) string {
+	s, _ := m[key].(string)
+	return s
+}
+
+// asBool returns v as a bool, or false when v is nil or not a bool.
+func asBool(v interface{}) bool {
+	b, _ := v.(bool)
+	return b
+}
+
 func LinkGenerator(clientConfig json.RawMessage, i *model.Inbound, hostname string) []string {
 	inbound, err := i.MarshalFull()
 	if err != nil {
@@ -117,8 +132,11 @@ func prepareTls(t *model.Tls) map[string]interface{} {
 		case "enabled", "server_name", "alpn":
 			oTls[k] = v
 		case "reality":
-			reality := v.(map[string]interface{})
-			clientReality := oTls["reality"].(map[string]interface{})
+			reality, okReality := v.(map[string]interface{})
+			clientReality, okClient := oTls["reality"].(map[string]interface{})
+			if !okReality || !okClient {
+				continue
+			}
 			clientReality["enabled"] = reality["enabled"]
 			if shortIDs, hasSIds := reality["short_id"].([]interface{}); hasSIds && len(shortIDs) > 0 {
 				clientReality["short_id"] = shortIDs[common.RandomInt(len(shortIDs))]
@@ -132,7 +150,8 @@ func prepareTls(t *model.Tls) map[string]interface{} {
 func socksLink(userConfig map[string]interface{}, addrs []map[string]interface{}) []string {
 	var links []string
 	for _, addr := range addrs {
-		links = append(links, fmt.Sprintf("socks5://%s:%s@%s:%d", userConfig["username"], userConfig["password"], addr["server"].(string), uint(addr["server_port"].(float64))))
+		port, _ := addr["server_port"].(float64)
+		links = append(links, fmt.Sprintf("socks5://%s:%s@%s:%d", userConfig["username"], userConfig["password"], mapString(addr, "server"), uint(port)))
 	}
 	return links
 }
@@ -144,7 +163,8 @@ func httpLink(userConfig map[string]interface{}, addrs []map[string]interface{})
 		if addr["tls"] != nil {
 			protocol = "https"
 		}
-		links = append(links, fmt.Sprintf("%s://%s:%s@%s:%d", protocol, userConfig["username"], userConfig["password"], addr["server"].(string), uint(addr["server_port"].(float64))))
+		port, _ := addr["server_port"].(float64)
+		links = append(links, fmt.Sprintf("%s://%s:%s@%s:%d", protocol, userConfig["username"], userConfig["password"], mapString(addr, "server"), uint(port)))
 	}
 	return links
 }
@@ -173,7 +193,7 @@ func shadowsocksLink(
 	var links []string
 	for _, addr := range addrs {
 		port, _ := addr["server_port"].(float64)
-		links = append(links, fmt.Sprintf("%s@%s:%.0f#%s", uriBase, addr["server"].(string), port, addr["remark"].(string)))
+		links = append(links, fmt.Sprintf("%s@%s:%.0f#%s", uriBase, mapString(addr, "server"), port, mapString(addr, "remark")))
 	}
 	return links
 }
@@ -199,7 +219,7 @@ func naiveLink(
 			if alpn, ok := tls["alpn"].([]interface{}); ok {
 				alpnList := make([]string, len(alpn))
 				for i, v := range alpn {
-					alpnList[i] = v.(string)
+					alpnList[i], _ = v.(string)
 				}
 				params = append(params, LinkParam{"alpn", strings.Join(alpnList, ",")})
 			}
@@ -214,8 +234,8 @@ func naiveLink(
 		}
 
 		port, _ := addr["server_port"].(float64)
-		uri := baseUri + toBase64([]byte(fmt.Sprintf("%s:%s@%s:%.0f", username, password, addr["server"].(string), port)))
-		links = append(links, addParams(uri, params, addr["remark"].(string)))
+		uri := baseUri + toBase64([]byte(fmt.Sprintf("%s:%s@%s:%.0f", username, password, mapString(addr, "server"), port)))
+		links = append(links, addParams(uri, params, mapString(addr, "remark")))
 	}
 	return links
 }
@@ -251,20 +271,21 @@ func hysteriaLink(
 			params = append(params, LinkParam{"fastopen", "0"})
 		}
 		var outJson map[string]interface{}
-		if err := json.Unmarshal(inbound["out_json"].(json.RawMessage), &outJson); err != nil {
+		outRaw, _ := inbound["out_json"].(json.RawMessage)
+		if err := json.Unmarshal(outRaw, &outJson); err != nil {
 			return []string{} // Handle error
 		}
 		if mport, ok := outJson["server_ports"].([]interface{}); ok {
 			mportList := make([]string, len(mport))
 			for i, v := range mport {
-				mportList[i] = v.(string)
+				mportList[i], _ = v.(string)
 			}
 			params = append(params, LinkParam{"mport", strings.Join(mportList, ",")})
 		}
 
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, addr["server"].(string), port)
-		links = append(links, addParams(uri, params, addr["remark"].(string)))
+		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
+		links = append(links, addParams(uri, params, mapString(addr, "remark")))
 	}
 
 	return links
@@ -304,20 +325,21 @@ func hysteria2Link(
 			params = append(params, LinkParam{"fastopen", "0"})
 		}
 		var outJson map[string]interface{}
-		if err := json.Unmarshal(inbound["out_json"].(json.RawMessage), &outJson); err != nil {
+		outRaw, _ := inbound["out_json"].(json.RawMessage)
+		if err := json.Unmarshal(outRaw, &outJson); err != nil {
 			return []string{} // Handle error
 		}
 		if mport, ok := outJson["server_ports"].([]interface{}); ok {
 			mportList := make([]string, len(mport))
 			for i, v := range mport {
-				mportList[i] = v.(string)
+				mportList[i], _ = v.(string)
 			}
 			params = append(params, LinkParam{"mport", strings.Join(mportList, ",")})
 		}
 
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, addr["server"].(string), port)
-		links = append(links, addParams(uri, params, addr["remark"].(string)))
+		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
+		links = append(links, addParams(uri, params, mapString(addr, "remark")))
 	}
 
 	return links
@@ -338,8 +360,8 @@ func anytlsLink(
 		}
 
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, addr["server"].(string), port)
-		links = append(links, addParams(uri, params, addr["remark"].(string)))
+		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
+		links = append(links, addParams(uri, params, mapString(addr, "remark")))
 	}
 
 	return links
@@ -369,8 +391,8 @@ func tuicLink(
 		}
 
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, addr["server"].(string), port)
-		links = append(links, addParams(uri, params, addr["remark"].(string)))
+		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
+		links = append(links, addParams(uri, params, mapString(addr, "remark")))
 	}
 
 	return links
@@ -429,15 +451,15 @@ func vlessLink(
 	for _, addr := range addrs {
 		params := make([]LinkParam, len(baseParams))
 		copy(params, baseParams)
-		if tls, ok := addr["tls"].(map[string]interface{}); ok && tls["enabled"].(bool) {
+		if tls, ok := addr["tls"].(map[string]interface{}); ok && asBool(tls["enabled"]) {
 			getTlsParams(&params, tls, "allowInsecure")
 			if flow, ok := userConfig["flow"].(string); ok && flow != "" && transportType == "tcp" {
 				params = append(params, LinkParam{"flow", flow})
 			}
 		}
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("vless://%s@%s:%.0f", uuid, addr["server"].(string), port)
-		uri = addParams(uri, params, addr["remark"].(string))
+		uri := fmt.Sprintf("vless://%s@%s:%.0f", uuid, mapString(addr, "server"), port)
+		uri = addParams(uri, params, mapString(addr, "remark"))
 		links = append(links, uri)
 	}
 
@@ -455,12 +477,12 @@ func trojanLink(
 	for _, addr := range addrs {
 		params := make([]LinkParam, len(baseParams))
 		copy(params, baseParams)
-		if tls, ok := addr["tls"].(map[string]interface{}); ok && tls["enabled"].(bool) {
+		if tls, ok := addr["tls"].(map[string]interface{}); ok && asBool(tls["enabled"]) {
 			getTlsParams(&params, tls, "allowInsecure")
 		}
 		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("trojan://%s@%s:%.0f", password, addr["server"].(string), port)
-		uri = addParams(uri, params, addr["remark"].(string))
+		uri := fmt.Sprintf("trojan://%s@%s:%.0f", password, mapString(addr, "server"), port)
+		uri = addParams(uri, params, mapString(addr, "remark"))
 		links = append(links, uri)
 	}
 
@@ -533,7 +555,7 @@ func vmessLink(
 }
 
 func populateVmessTlsParams(obj map[string]interface{}, tlsConfig interface{}) {
-	if tlsMap, ok := tlsConfig.(map[string]interface{}); ok && tlsMap["enabled"].(bool) {
+	if tlsMap, ok := tlsConfig.(map[string]interface{}); ok && asBool(tlsMap["enabled"]) {
 		obj["tls"] = "tls"
 		var tlsParams []LinkParam
 		getTlsParams(&tlsParams, tlsMap, "allowInsecure")
@@ -595,7 +617,9 @@ func getTransportParams(t interface{}) []LinkParam {
 		if host, ok := trasport["host"].([]interface{}); ok {
 			var hosts []string
 			for _, v := range host {
-				hosts = append(hosts, v.(string))
+				if s, ok := v.(string); ok {
+					hosts = append(hosts, s)
+				}
 			}
 			params = append(params, LinkParam{"host", strings.Join(hosts, ",")})
 		}
@@ -627,7 +651,7 @@ func getTransportParams(t interface{}) []LinkParam {
 }
 
 func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey string) {
-	if reality, ok := tls["reality"].(map[string]interface{}); ok && reality["enabled"].(bool) {
+	if reality, ok := tls["reality"].(map[string]interface{}); ok && asBool(reality["enabled"]) {
 		*params = append(*params, LinkParam{"security", "reality"})
 		if pbk, ok := reality["public_key"].(string); ok {
 			*params = append(*params, LinkParam{"pbk", pbk})
@@ -655,7 +679,7 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 	if alpn, ok := tls["alpn"].([]interface{}); ok {
 		alpnList := make([]string, len(alpn))
 		for i, v := range alpn {
-			alpnList[i] = v.(string)
+			alpnList[i], _ = v.(string)
 		}
 		*params = append(*params, LinkParam{"alpn", strings.Join(alpnList, ",")})
 	}

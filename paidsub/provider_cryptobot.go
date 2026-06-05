@@ -22,9 +22,8 @@ type cryptoBotProvider struct {
 	token string
 }
 
-func (p *cryptoBotProvider) Kind() ProviderKind        { return ProviderCryptoBot }
-func (p *cryptoBotProvider) Title(l lang) string       { return providerTitle(ProviderCryptoBot, l) }
-func (p *cryptoBotProvider) ConfirmsViaTelegram() bool { return false }
+func (p *cryptoBotProvider) Kind() ProviderKind  { return ProviderCryptoBot }
+func (p *cryptoBotProvider) Title(l lang) string { return providerTitle(ProviderCryptoBot, l) }
 
 func (p *cryptoBotProvider) CreateInvoice(ctx context.Context, order *PaymentOrder, tariff *Tariff, client *model.Client) (*Invoice, error) {
 	amount := fmt.Sprintf("%.2f", float64(order.Amount)/100.0)

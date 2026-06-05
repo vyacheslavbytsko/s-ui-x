@@ -10,6 +10,7 @@ import (
 
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util/redact"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,7 +68,12 @@ func canonicalClientIP(value string) string {
 	return addr.Unmap().String()
 }
 
-func requestIsHTTPS(c *gin.Context) bool {
+// RequestIsHTTPS reports whether the request arrived over HTTPS, trusting
+// X-Forwarded-Proto only when the peer is a configured trusted proxy. Exported
+// so the security-headers middleware can reuse this gated check for its HSTS
+// decision (a spoofed X-Forwarded-Proto from an untrusted client must not
+// trigger HSTS).
+func RequestIsHTTPS(c *gin.Context) bool {
 	if c.Request.TLS != nil {
 		return true
 	}
@@ -99,7 +105,7 @@ func resolveCookieSecure(c *gin.Context, settingService *service.SettingService)
 			logger.Warning("unable to get webDomain:", err)
 		}
 	}
-	return requestIsHTTPS(c)
+	return RequestIsHTTPS(c)
 }
 
 // resolveCookieSameSite returns the SameSite mode for session cookies. It is
@@ -192,6 +198,13 @@ func jsonObj(c *gin.Context, obj interface{}, err error) {
 	jsonMsgObj(c, "", obj, err)
 }
 
+// jsonMsgObj writes the standard API envelope (Msg) at HTTP 200 with a success
+// flag. This SPA contract is intentional: business/validation errors are
+// conveyed as {success:false, msg} at HTTP 200 (the frontend reads the flag),
+// not via HTTP status codes; transport-level handlers that genuinely need real
+// status codes (xuiImportError, telegram backup) set them explicitly. The
+// client-facing error text is redacted to avoid leaking paths/SQL/internals;
+// the full error is still logged server-side.
 func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {
 	m := Msg{
 		Obj: obj,
@@ -203,7 +216,7 @@ func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {
 		}
 	} else {
 		m.Success = false
-		m.Msg = msg + ": " + err.Error()
+		m.Msg = msg + ": " + redact.String(err.Error())
 		logger.Warning("failed :", err)
 	}
 	c.JSON(http.StatusOK, m)

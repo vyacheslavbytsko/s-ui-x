@@ -28,10 +28,10 @@ func authedSaveRouter(t *testing.T) (*gin.Engine, string, []*http.Cookie) {
 	return router, token, cookies
 }
 
-func postSave(router *gin.Engine, token string, cookies []*http.Cookie, object, action, data string) *httptest.ResponseRecorder {
+func postSave(router *gin.Engine, token string, cookies []*http.Cookie, data string) *httptest.ResponseRecorder {
 	form := url.Values{}
-	form.Set("object", object)
-	form.Set("action", action)
+	form.Set("object", "clients")
+	form.Set("action", "new")
 	form.Set("data", data)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/save", strings.NewReader(form.Encode()))
@@ -57,7 +57,7 @@ func countClients(t *testing.T, name string) int64 {
 // backend: ONE /api/save request inserts exactly one row.
 func TestSaveClientCreatesExactlyOneRow(t *testing.T) {
 	router, token, cookies := authedSaveRouter(t)
-	rec := postSave(router, token, cookies, "clients", "new", `{"name":"single","enable":true,"inbounds":[],"links":[]}`)
+	rec := postSave(router, token, cookies, `{"name":"single","enable":true,"inbounds":[],"links":[]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /api/save returned %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -72,10 +72,10 @@ func TestSaveClientCreatesExactlyOneRow(t *testing.T) {
 func TestSaveDedupBlocksRapidDuplicateCreate(t *testing.T) {
 	router, token, cookies := authedSaveRouter(t)
 	payload := `{"name":"dupe","enable":true,"inbounds":[],"links":[]}`
-	if rec := postSave(router, token, cookies, "clients", "new", payload); rec.Code != http.StatusOK {
+	if rec := postSave(router, token, cookies, payload); rec.Code != http.StatusOK {
 		t.Fatalf("first save returned %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := postSave(router, token, cookies, "clients", "new", payload); rec.Code != http.StatusOK {
+	if rec := postSave(router, token, cookies, payload); rec.Code != http.StatusOK {
 		t.Fatalf("second save returned %d body=%s", rec.Code, rec.Body.String())
 	}
 	if got := countClients(t, "dupe"); got != 1 {
@@ -140,10 +140,10 @@ func TestSaveDedupStuckInFlightEvicted(t *testing.T) {
 // two DIFFERENT creates in quick succession both succeed.
 func TestSaveDedupAllowsDistinctCreates(t *testing.T) {
 	router, token, cookies := authedSaveRouter(t)
-	if rec := postSave(router, token, cookies, "clients", "new", `{"name":"alpha","enable":true,"inbounds":[],"links":[]}`); rec.Code != http.StatusOK {
+	if rec := postSave(router, token, cookies, `{"name":"alpha","enable":true,"inbounds":[],"links":[]}`); rec.Code != http.StatusOK {
 		t.Fatalf("alpha save returned %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := postSave(router, token, cookies, "clients", "new", `{"name":"beta","enable":true,"inbounds":[],"links":[]}`); rec.Code != http.StatusOK {
+	if rec := postSave(router, token, cookies, `{"name":"beta","enable":true,"inbounds":[],"links":[]}`); rec.Code != http.StatusOK {
 		t.Fatalf("beta save returned %d body=%s", rec.Code, rec.Body.String())
 	}
 	if a, b := countClients(t, "alpha"), countClients(t, "beta"); a != 1 || b != 1 {

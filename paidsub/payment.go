@@ -255,7 +255,7 @@ func (p *PaymentService) ApplyPaidOrder(orderID uint, chargeID string, raw []byt
 			Actor:    "PaidSubBot",
 			Key:      "clients",
 			Action:   "renew",
-			Obj:      json.RawMessage(`"` + client.Name + `"`),
+			Obj:      jsonString(client.Name),
 		}).Error; err != nil {
 			return err
 		}
@@ -393,7 +393,7 @@ func (p *PaymentService) finalizeRefund(orderID uint, revoke bool) error {
 			Actor:    "PaidSubBot",
 			Key:      "clients",
 			Action:   "refund",
-			Obj:      json.RawMessage(`"` + client.Name + `"`),
+			Obj:      jsonString(client.Name),
 		}).Error; err != nil {
 			return err
 		}
@@ -571,7 +571,8 @@ func (b *Bot) handlePreCheckout(ctx context.Context, q *tgPreCheckoutQuery) {
 	ok := err == nil &&
 		order.Status == StatusPending &&
 		q.TotalAmount == order.Amount &&
-		strings.EqualFold(q.Currency, order.Currency)
+		strings.EqualFold(q.Currency, order.Currency) &&
+		(order.TelegramUserId == 0 || q.From.ID == order.TelegramUserId)
 	if ok {
 		_ = b.answerPreCheckout(ctx, q.ID, true, "")
 		return
@@ -592,6 +593,16 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	}
 	if sp.TotalAmount != order.Amount || !strings.EqualFold(sp.Currency, order.Currency) {
 		logger.Warning("paidsub: payment amount/currency mismatch; refusing renewal")
+		b.payments.markFailed(order.Id)
+		(&service.TelegramService{}).NotifyTelegramEvent("paidsub_payment_mismatch", map[string]string{
+			"orderId": fmt.Sprintf("%d", order.Id),
+		})
+		return
+	}
+	// Defence in depth: the payer must be the Telegram user the order was created
+	// for (the payload + pending status are the primary gate).
+	if order.TelegramUserId != 0 && m.From.ID != order.TelegramUserId {
+		logger.Warning("paidsub: successful_payment from unexpected telegram user; refusing renewal")
 		b.payments.markFailed(order.Id)
 		(&service.TelegramService{}).NotifyTelegramEvent("paidsub_payment_mismatch", map[string]string{
 			"orderId": fmt.Sprintf("%d", order.Id),
@@ -636,4 +647,14 @@ func formatOrderAmount(amount int64, currency string) string {
 		return fmt.Sprintf("%d ⭐", amount)
 	}
 	return fmt.Sprintf("%.2f %s", float64(amount)/100.0, currency)
+}
+
+// jsonString marshals s as a JSON string so a client name containing quotes or
+// backslashes cannot corrupt the Changes.Obj payload.
+func jsonString(s string) json.RawMessage {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return b
 }

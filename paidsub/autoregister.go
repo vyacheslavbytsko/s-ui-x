@@ -46,7 +46,13 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	// Global cap on auto-registered clients (anti-DoS).
 	if maxClients, _ := b.setting.GetPaidSubMaxClients(); maxClients > 0 {
 		var cnt int64
-		db.Model(&Binding{}).Count(&cnt)
+		if err := db.Model(&Binding{}).Count(&cnt).Error; err != nil {
+			// Fail closed: if the anti-DoS cap cannot be evaluated, refuse rather
+			// than risk unbounded auto-registration.
+			logger.Warning("paidsub: count bindings for cap failed: ", err)
+			_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+			return true
+		}
 		if cnt >= int64(maxClients) {
 			_ = b.sendMessage(ctx, chatID, tr(l, "reg_full"), nil)
 			return true

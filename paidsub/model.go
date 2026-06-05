@@ -73,6 +73,5 @@ const (
 	StatusPaid     = "paid"
 	StatusFailed   = "failed"
 	StatusExpired  = "expired"
-	StatusCanceled = "canceled"
 	StatusRefunded = "refunded"
 )

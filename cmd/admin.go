@@ -6,6 +6,7 @@ import (
 	"github.com/deposist/s-ui-x/config"
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util/common"
 )
 
 func resetAdmin() {
@@ -15,13 +16,19 @@ func resetAdmin() {
 		return
 	}
 
+	// Generate a random password instead of the well-known admin/admin so a reset
+	// never leaves the panel on default credentials. Print it once for the
+	// operator (it is stored only as a bcrypt hash).
+	password := common.Random(16)
 	userService := service.UserService{}
-	err = userService.UpdateFirstUser("admin", "admin")
-	if err != nil {
+	if err := userService.UpdateFirstUser("admin", password); err != nil {
 		fmt.Println("reset admin credentials failed:", err)
-	} else {
-		fmt.Println("reset admin credentials success")
+		return
 	}
+	fmt.Println("reset admin credentials success")
+	fmt.Println("\tUsername:\tadmin")
+	fmt.Printf("\tPassword:\t%s\n", password)
+	fmt.Println("Save this password now; it cannot be recovered later.")
 }
 
 func updateAdmin(username string, password string) {

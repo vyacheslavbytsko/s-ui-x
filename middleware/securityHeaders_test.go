@@ -12,7 +12,8 @@ import (
 func TestAdminSecurityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(AdminSecurityHeaders())
+	// Inject a checker that reports the request as secure → HSTS expected.
+	router.Use(AdminSecurityHeaders(func(*gin.Context) bool { return true }))
 	router.GET("/", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -50,7 +51,8 @@ func TestAdminSecurityHeaders(t *testing.T) {
 func TestAdminSecurityHeadersSkipHSTSForPlainHTTP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(AdminSecurityHeaders())
+	// Injected checker reports not-secure → HSTS must be skipped.
+	router.Use(AdminSecurityHeaders(func(*gin.Context) bool { return false }))
 	router.GET("/", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})

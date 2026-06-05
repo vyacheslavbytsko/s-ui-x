@@ -63,7 +63,7 @@ func (h *apiHandlers) broadcast(c *gin.Context) {
 		respFail(c, err.Error())
 		return
 	}
-	h.audit(c, "paidsub_broadcast", "info", map[string]any{"sent": sent, "failed": failed})
+	h.audit(c, "paidsub_broadcast", map[string]any{"sent": sent, "failed": failed})
 	respOK(c, map[string]any{"sent": sent, "failed": failed})
 }
 
@@ -92,7 +92,7 @@ func respFail(c *gin.Context, msg string) {
 	c.JSON(http.StatusOK, apiMsg{Success: false, Msg: msg})
 }
 
-func (h *apiHandlers) audit(c *gin.Context, event, severity string, details map[string]any) {
+func (h *apiHandlers) audit(c *gin.Context, event string, details map[string]any) {
 	if h.deps.Audit == nil {
 		return
 	}
@@ -100,7 +100,7 @@ func (h *apiHandlers) audit(c *gin.Context, event, severity string, details map[
 	if h.deps.LoginUser != nil {
 		actor = h.deps.LoginUser(c)
 	}
-	h.deps.Audit(c, actor, event, "paidsub", severity, details)
+	h.deps.Audit(c, actor, event, "paidsub", "info", details)
 }
 
 type bindingRow struct {
@@ -160,7 +160,7 @@ func (h *apiHandlers) setBinding(c *gin.Context) {
 			respFail(c, err.Error())
 			return
 		}
-		h.audit(c, "paidsub_unbound", "info", map[string]any{"clientId": req.ClientId})
+		h.audit(c, "paidsub_unbound", map[string]any{"clientId": req.ClientId})
 		respOK(c, nil)
 		return
 	}
@@ -168,7 +168,7 @@ func (h *apiHandlers) setBinding(c *gin.Context) {
 		respFail(c, err.Error())
 		return
 	}
-	h.audit(c, "paidsub_bound", "info", map[string]any{"clientId": req.ClientId, "tgUserId": req.TgUserId})
+	h.audit(c, "paidsub_bound", map[string]any{"clientId": req.ClientId, "tgUserId": req.TgUserId})
 	respOK(c, nil)
 }
 
@@ -202,7 +202,7 @@ func (h *apiHandlers) saveTariff(c *gin.Context) {
 		respFail(c, err.Error())
 		return
 	}
-	h.audit(c, "paidsub_tariff_saved", "info", map[string]any{"action": req.Action})
+	h.audit(c, "paidsub_tariff_saved", map[string]any{"action": req.Action})
 	respOK(c, nil)
 }
 
@@ -265,6 +265,6 @@ func (h *apiHandlers) refund(c *gin.Context) {
 		respFail(c, err.Error())
 		return
 	}
-	h.audit(c, "paidsub_refunded", "info", map[string]any{"orderId": req.OrderId, "revoke": req.Revoke, "status": status})
+	h.audit(c, "paidsub_refunded", map[string]any{"orderId": req.OrderId, "revoke": req.Revoke, "status": status})
 	respOK(c, map[string]any{"status": status})
 }

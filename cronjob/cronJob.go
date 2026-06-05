@@ -15,7 +15,17 @@ func NewCronJob() *CronJob {
 }
 
 func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
-	c.cron = cron.New(cron.WithLocation(loc), cron.WithSeconds())
+	c.cron = cron.New(
+		cron.WithLocation(loc),
+		cron.WithSeconds(),
+		// Recover keeps a panicking job (e.g. a nil-deref in a goroutine) from
+		// taking down the whole panel process; SkipIfStillRunning prevents a
+		// slow job (notably XUISyncJob @every 1m) from overlapping itself.
+		cron.WithChain(
+			cron.Recover(cronLogger{}),
+			cron.SkipIfStillRunning(cronLogger{}),
+		),
+	)
 	// Start stats job
 	if _, err := c.cron.AddJob("@every 10s", NewStatsJob(trafficAge > 0)); err != nil {
 		return err

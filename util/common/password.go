@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/subtle"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -29,5 +30,7 @@ func CheckPassword(storedPassword string, password string) (bool, bool) {
 	if IsPasswordHash(storedPassword) {
 		return bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(password)) == nil, true
 	}
-	return storedPassword == password, true
+	// Legacy plaintext path (only until the stored password is migrated to
+	// bcrypt). Use a constant-time compare so the match does not leak via timing.
+	return subtle.ConstantTimeCompare([]byte(storedPassword), []byte(password)) == 1, true
 }

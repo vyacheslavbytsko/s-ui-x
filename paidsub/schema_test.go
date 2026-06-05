@@ -1,7 +1,10 @@
 package paidsub
 
 import (
+	"fmt"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/deposist/s-ui-x/database"
@@ -9,15 +12,27 @@ import (
 	"gorm.io/gorm"
 )
 
+var testDBSeq atomic.Int64
+
 func openTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB("file::memory:?cache=shared"); err != nil {
+	// A uniquely named shared-cache in-memory DB per test isolates each test
+	// without touching disk (avoiding Windows temp-file lock flakiness). The
+	// previous unnamed `:memory:?cache=shared` form was process-global: rows
+	// leaked across tests and concurrent access raced with "database table is
+	// locked".
+	dsn := fmt.Sprintf("file:paidsub_test_%d?mode=memory&cache=shared", testDBSeq.Add(1))
+	if err := database.InitDB(dsn); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
+	// For this in-memory DSN the first-run routine writes initial-admin.txt next
+	// to the (virtual) db name, i.e. the working dir; remove that side file so it
+	// never lingers in the package directory.
+	t.Cleanup(func() { _ = os.Remove("initial-admin.txt") })
 	db := database.GetDB()
 	t.Cleanup(func() {
 		if sqlDB, err := db.DB(); err == nil {

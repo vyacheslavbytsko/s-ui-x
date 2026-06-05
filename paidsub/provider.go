@@ -59,9 +59,6 @@ type PaymentProvider interface {
 	Kind() ProviderKind
 	Title(l lang) string
 	CreateInvoice(ctx context.Context, order *PaymentOrder, tariff *Tariff, client *model.Client) (*Invoice, error)
-	// ConfirmsViaTelegram reports whether Telegram successful_payment finalizes
-	// this provider (Stars/YooKassa/Stripe). Others confirm out-of-band.
-	ConfirmsViaTelegram() bool
 }
 
 // pollingProvider is implemented by providers confirmed via polling (CryptoBot).
@@ -97,9 +94,8 @@ type telegramProvider struct {
 	token string // provider_token (empty for Stars)
 }
 
-func (p *telegramProvider) Kind() ProviderKind        { return p.kind }
-func (p *telegramProvider) Title(l lang) string       { return providerTitle(p.kind, l) }
-func (p *telegramProvider) ConfirmsViaTelegram() bool { return true }
+func (p *telegramProvider) Kind() ProviderKind  { return p.kind }
+func (p *telegramProvider) Title(l lang) string { return providerTitle(p.kind, l) }
 
 func (p *telegramProvider) CreateInvoice(ctx context.Context, order *PaymentOrder, tariff *Tariff, client *model.Client) (*Invoice, error) {
 	desc := tariff.Description
@@ -130,9 +126,8 @@ type externalProvider struct {
 	template string
 }
 
-func (p *externalProvider) Kind() ProviderKind        { return ProviderExternal }
-func (p *externalProvider) Title(l lang) string       { return providerTitle(ProviderExternal, l) }
-func (p *externalProvider) ConfirmsViaTelegram() bool { return false }
+func (p *externalProvider) Kind() ProviderKind  { return ProviderExternal }
+func (p *externalProvider) Title(l lang) string { return providerTitle(ProviderExternal, l) }
 
 func (p *externalProvider) CreateInvoice(ctx context.Context, order *PaymentOrder, tariff *Tariff, client *model.Client) (*Invoice, error) {
 	url := renderExternalURL(p.template, order, tariff, client)

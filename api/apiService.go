@@ -448,9 +448,20 @@ func (a *ApiService) getEncryptedDb(c *gin.Context, exclude string) {
 func (a *ApiService) Login(c *gin.Context) {
 	remoteIP := getRemoteIp(c)
 	username := c.Request.FormValue("user")
+	userKey := loginRateLimitUserKey(username)
+	// Two independent throttles: per source IP (one attacker host) and per
+	// username (a distributed brute-force on one account from rotating IPs,
+	// which the per-IP limit alone cannot stop).
 	if err := checkLoginRateLimit(remoteIP); err != nil {
 		a.recordAudit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
-			"reason": "rate_limit",
+			"reason": "rate_limit_ip",
+		})
+		jsonMsg(c, "", err)
+		return
+	}
+	if err := checkLoginRateLimit(userKey); err != nil {
+		a.recordAudit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
+			"reason": "rate_limit_user",
 		})
 		jsonMsg(c, "", err)
 		return
@@ -458,6 +469,7 @@ func (a *ApiService) Login(c *gin.Context) {
 	loginUser, err := a.UserService.Login(username, c.Request.FormValue("pass"), remoteIP)
 	if err != nil {
 		recordLoginFailure(remoteIP)
+		recordLoginFailure(userKey)
 		a.recordAudit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
 			"reason": err.Error(),
 		})
@@ -466,6 +478,7 @@ func (a *ApiService) Login(c *gin.Context) {
 		return
 	}
 	resetLoginFailures(remoteIP)
+	resetLoginFailures(userKey)
 
 	sessionMaxAge, err := a.SettingService.GetSessionMaxAge()
 	if err != nil {
@@ -496,16 +509,17 @@ func (a *ApiService) Login(c *gin.Context) {
 }
 
 func (a *ApiService) ChangePass(c *gin.Context) {
-	id := c.Request.FormValue("id")
 	oldPass := c.Request.FormValue("oldPass")
 	newUsername := c.Request.FormValue("newUsername")
 	newPass := c.Request.FormValue("newPass")
-	err := a.UserService.ChangePass(id, oldPass, newUsername, newPass)
+	// Bind the change to the authenticated session user; never trust a target id
+	// from the request, so one admin cannot change another admin's credentials.
+	currentUser := GetLoginUser(c)
+	err := a.UserService.ChangePass(currentUser, oldPass, newUsername, newPass)
 	if err == nil {
 		logger.Info("change user credentials success")
-		a.recordAudit(c, GetLoginUser(c), "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
-			"targetUserId": id,
-			"newUsername":  newUsername,
+		a.recordAudit(c, currentUser, "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
+			"newUsername": newUsername,
 		})
 		jsonMsg(c, "save", nil)
 	} else {
