@@ -69,7 +69,13 @@ func (c *Core) Start(sbConfig []byte) error {
 	ctx := c.GetCtx()
 	err := opt.UnmarshalJSONContext(ctx, sbConfig)
 	if err != nil {
+		// Returning the error (instead of only logging it) is essential: with a
+		// zero/partial opt, NewBox+Start succeed on an empty option set and Start
+		// would otherwise return nil, so the caller marks the core "running" while
+		// no inbound is actually listening — a silent total outage behind a green
+		// status. Surfacing the error lets startCoreLocked call markCoreStartFailed.
 		logger.Error("Unmarshal config err:", err.Error())
+		return err
 	}
 
 	instance, err := NewBox(Options{
