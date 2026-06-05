@@ -157,9 +157,13 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 			}
 			var pass string
 			if method == "2022-blake3-aes-128-gcm" {
-				pass, _ = configs["shadowsocks16"].(map[string]interface{})["password"].(string)
+				if m, ok := configs["shadowsocks16"].(map[string]interface{}); ok {
+					pass, _ = m["password"].(string)
+				}
 			} else {
-				pass, _ = configs["shadowsocks"].(map[string]interface{})["password"].(string)
+				if m, ok := configs["shadowsocks"].(map[string]interface{}); ok {
+					pass, _ = m["password"].(string)
+				}
 			}
 			userPass = append(userPass, pass)
 			outbound["password"] = strings.Join(userPass, ":")
