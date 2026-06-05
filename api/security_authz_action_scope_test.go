@@ -68,6 +68,27 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 	}
 }
 
+// TestSecurityAuthZAPIV2BrowserSessionBypassesActionScope pins the dependency the
+// gate relies on: a browser session carries no token scope, so enforceActionScope
+// must allow even the most gated actions (the gate only constrains API tokens).
+func TestSecurityAuthZAPIV2BrowserSessionBypassesActionScope(t *testing.T) {
+	initSessionTestDB(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := NewAPIv2Handler(router.Group("/apiv2"))
+
+	for _, action := range []string{"save", "restartApp", "settings", "users", "stats"} {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/apiv2/"+action, nil)
+		c.Set(apiUsernameKey, "session-admin")
+		// Deliberately do NOT set apiTokenScopeKey (browser session).
+		if !h.enforceActionScope(c, action) {
+			t.Fatalf("browser session must bypass the action-scope gate for %q, got status %d", action, rec.Code)
+		}
+	}
+}
+
 func runActionScopeGate(h *APIv2Handler, action, scope string) int {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
