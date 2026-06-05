@@ -38,11 +38,27 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      # Strict, fail-closed install: a desynced package-lock.json aborts the
+      # release here instead of silently shipping an unvalidated bundle.
+      # `npm install` (lenient) previously masked a lockfile desync and shipped
+      # an inconsistent dist with a dangling chunk -> 404 -> black screen
+      # (v1.5.7-beta6). Mirror the same gates CI runs so a release can never
+      # carry a frontend that CI would reject.
+      - name: Install frontend dependencies (strict)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test
+
       - name: Build frontend
-        run: |
-          cd frontend
-          npm install
-          npm run build
+        working-directory: frontend
+        run: npm run build
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v7

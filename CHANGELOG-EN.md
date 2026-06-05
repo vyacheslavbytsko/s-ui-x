@@ -40,6 +40,24 @@ default** — existing setups are completely unaffected until you switch it on.
 
 ---
 
+## [1.5.7-beta6-hotfix1] - 2026-06-05 - Fix beta6 panel black screen (frontend build)
+
+Emergency **build** hotfix for v1.5.7-beta6. No code, config, or data changes —
+it only fixes the broken frontend build that shipped in the beta6 artifacts.
+
+**🐛 Fixed**
+- **Web panel failed to load on v1.5.7-beta6** — black screen with a `404` for a
+  JS chunk (e.g. `assets/_WJiVkoC.js`). `frontend/package-lock.json` had drifted
+  out of sync with `package.json` (icons moved from `@mdi/font` to `@mdi/js`
+  without regenerating the lock); the release built the frontend with the lenient
+  `npm install` and embedded an inconsistent, unvalidated bundle. The lockfile is
+  regenerated in sync and the build is verified consistent — no dangling chunk.
+
+**🔒 Release-pipeline hardening**
+- The release workflow now builds the frontend fail-closed — `npm ci` plus the
+  same lint and unit-test gates CI runs — so a desynced lockfile or any
+  CI-rejected frontend can no longer ship.
+
 ## [1.5.7-beta6] - 2026-06-05 - Security & reliability hardening, performance, and accessibility
 
 A hardening release driven by a full code-quality, optimization, and security
