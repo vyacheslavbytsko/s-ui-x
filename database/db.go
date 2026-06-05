@@ -177,10 +177,11 @@ func InitDB(dbPath string) error {
 		&model.Client{},
 		&model.Changes{},
 		&model.AuditEvent{},
-		&model.XUISyncProfile{},
-		&model.XUIKnownHost{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := dropDeprecatedTables(); err != nil {
 		return err
 	}
 	if err := ensureNoTLSRow(); err != nil {
@@ -238,6 +239,25 @@ func ensureDefaultOutbound(store defaultOutboundStore) error {
 	return store.Create(&defaultOutbound)
 }
 
+// dropDeprecatedTables removes tables that backed features which have since been
+// retired, so a re-saved database does not keep dead schema around. The 3x-ui
+// scheduled-sync feature (xui_sync_profiles) and its SSH host-key store
+// (xui_known_hosts) were removed in favour of the one-shot .db upload importer;
+// these tables are dropped on every startup. DROP TABLE IF EXISTS is idempotent
+// and a no-op once the tables are gone.
+func dropDeprecatedTables() error {
+	statements := []string{
+		"DROP TABLE IF EXISTS xui_sync_profiles",
+		"DROP TABLE IF EXISTS xui_known_hosts",
+	}
+	for _, query := range statements {
+		if err := db.Exec(query).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ensureNoTLSRow() error {
 	return ensureNoTLSRowOn(db)
 }
@@ -277,7 +297,6 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
-		"CREATE INDEX IF NOT EXISTS idx_xui_sync_profiles_enabled ON xui_sync_profiles(enabled, last_run_at)",
 	}
 	for _, query := range indexes {
 		if err := db.Exec(query).Error; err != nil {

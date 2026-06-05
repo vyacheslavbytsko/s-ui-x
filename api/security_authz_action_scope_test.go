@@ -37,7 +37,7 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 		{"status", []string{"read", "write", "observability"}},
 		{"logs", []string{"read", "write", "observability"}},
 	}
-	allScopes := []string{"read", "write", "database", "telegram", "observability", "xui_remote"}
+	allScopes := []string{"read", "write", "database", "telegram", "observability"}
 
 	for _, tc := range cases {
 		t.Run(tc.action, func(t *testing.T) {

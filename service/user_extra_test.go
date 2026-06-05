@@ -45,7 +45,7 @@ func TestUserServiceAddTokenScopePersistenceAndInvalidScope(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 
-	for _, scope := range []string{"read", "write", "database", "telegram", "observability", "xui_remote"} {
+	for _, scope := range []string{"read", "write", "database", "telegram", "observability"} {
 		if _, err := userService.AddToken("admin", 0, "scope "+scope, scope); err != nil {
 			t.Fatalf("scope %q should be accepted: %v", scope, err)
 		}
@@ -58,8 +58,8 @@ func TestUserServiceAddTokenScopePersistenceAndInvalidScope(t *testing.T) {
 	if err := database.GetDB().Order("id asc").Find(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(stored) != 6 {
-		t.Fatalf("expected six stored tokens, got %d", len(stored))
+	if len(stored) != 5 {
+		t.Fatalf("expected five stored tokens, got %d", len(stored))
 	}
 	for _, token := range stored {
 		if token.TokenHash == "" || token.TokenPrefix == "" || !token.Enabled {

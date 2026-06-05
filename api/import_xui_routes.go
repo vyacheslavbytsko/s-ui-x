@@ -18,13 +18,6 @@ var importXUIRouteSpecs = []importXUIRouteSpec{
 	{method: http.MethodPost, path: "/import-xui/apply", handler: func(a *ApiService) gin.HandlerFunc { return a.ImportXuiApply }},
 	{method: http.MethodPost, path: "/import-xui/rollback", handler: func(a *ApiService) gin.HandlerFunc { return a.ImportXuiRollback }},
 	{method: http.MethodGet, path: "/import-xui/reports", handler: func(a *ApiService) gin.HandlerFunc { return a.ImportXuiReports }},
-	{method: http.MethodPost, path: "/import-xui/remote/plan", handler: func(a *ApiService) gin.HandlerFunc { return a.ImportXuiRemotePlan }},
-	{method: http.MethodPost, path: "/import-xui/remote/apply", handler: func(a *ApiService) gin.HandlerFunc { return a.ImportXuiRemoteApply }},
-	{method: http.MethodGet, path: "/import-xui/remote/status", handler: func(a *ApiService) gin.HandlerFunc { return a.XUIRemoteStatus }},
-	{method: http.MethodGet, path: "/import-xui/sync/profiles", handler: func(a *ApiService) gin.HandlerFunc { return a.XUISyncProfiles }},
-	{method: http.MethodPost, path: "/import-xui/sync/profiles", handler: func(a *ApiService) gin.HandlerFunc { return a.SaveXUISyncProfile }},
-	{method: http.MethodPost, path: "/import-xui/sync/run", handler: func(a *ApiService) gin.HandlerFunc { return a.RunXUISyncProfile }},
-	{method: http.MethodPost, path: "/import-xui/sync/disable", handler: func(a *ApiService) gin.HandlerFunc { return a.DisableXUISyncProfile }},
 }
 
 func registerImportXUIRoutes(g *gin.RouterGroup, a *ApiService) {

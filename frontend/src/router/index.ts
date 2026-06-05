@@ -87,11 +87,6 @@ const routes = [
         component: () => import('@/views/MigrateXui.vue'),
       },
       {
-        path: '/migrate-xui/schedule',
-        name: 'pages.migrateXuiSchedule',
-        component: () => import('@/views/MigrateXuiSchedule.vue'),
-      },
-      {
         path: '/paid-subscriptions',
         name: 'pages.paidSub',
         component: () => import('@/views/paidsub/PaidSubscriptions.vue'),

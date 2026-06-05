@@ -50,7 +50,6 @@ func ParseCmd() {
 		fmt.Println("    admin          set/reset/show first admin credentials")
 		fmt.Println("    decrypt-backup decrypt Telegram backup envelope")
 		fmt.Println("    import-xui     import configuration from a 3x-ui database")
-		fmt.Println("    sync-xui       run or list saved 3x-ui sync profiles")
 		fmt.Println("    uri            Show panel URI")
 		fmt.Println("    migrate        migrate form older version")
 		fmt.Println("    setting        set/reset/clear/show settings")
@@ -112,9 +111,6 @@ func ParseCmd() {
 
 	case "decrypt-backup":
 		os.Exit(runDecryptBackup(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
-
-	case "sync-xui":
-		runSyncXuiFromMain()
 
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])

@@ -4,12 +4,6 @@
       <v-col cols="12" md="6">
         <div class="text-h5">{{ $t('migrateXui.title') }}</div>
       </v-col>
-      <v-spacer></v-spacer>
-      <v-col cols="12" md="auto">
-        <v-btn variant="tonal" prepend-icon="mdi-calendar-sync" @click="$router.push('/migrate-xui/schedule')">
-          {{ $t('migrateXui.schedule.open') }}
-        </v-btn>
-      </v-col>
     </v-row>
 
     <v-row class="mb-2">

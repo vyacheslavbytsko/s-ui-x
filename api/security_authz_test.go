@@ -36,13 +36,6 @@ func securityAuthZScopeRows() []securityAuthZRow {
 		{method: http.MethodPost, path: "/apiv2/import-xui/apply", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodPost, path: "/apiv2/import-xui/rollback", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/apiv2/import-xui/reports", resource: "database", allowed: []string{"admin", "database"}},
-		{method: http.MethodPost, path: "/apiv2/import-xui/remote/plan", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodPost, path: "/apiv2/import-xui/remote/apply", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodGet, path: "/apiv2/import-xui/remote/status", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodGet, path: "/apiv2/import-xui/sync/profiles", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodPost, path: "/apiv2/import-xui/sync/profiles", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodPost, path: "/apiv2/import-xui/sync/run", resource: "xui_remote", allowed: []string{"xui_remote"}},
-		{method: http.MethodPost, path: "/apiv2/import-xui/sync/disable", resource: "xui_remote", allowed: []string{"xui_remote"}},
 		{method: http.MethodPost, path: "/apiv2/importdb", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodPost, path: "/apiv2/import-xui", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/apiv2/getdb", resource: "database", allowed: []string{"admin", "database"}},
@@ -87,7 +80,7 @@ func runSecurityScopeGate(serviceUnderTest *ApiService, row securityAuthZRow, sc
 }
 
 func firstDisallowedScope(allowed []string, auditAdmin bool) string {
-	for _, candidate := range []string{"read", "write", "database", "telegram", "observability", "xui_remote", "admin"} {
+	for _, candidate := range []string{"read", "write", "database", "telegram", "observability", "admin"} {
 		if auditAdmin {
 			if candidate != "admin" {
 				return candidate

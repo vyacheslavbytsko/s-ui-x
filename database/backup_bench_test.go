@@ -95,11 +95,10 @@ func prepareBackupBenchFixture(b *testing.B, rowsPerTable int) string {
 		b.Fatal(err)
 	}
 	tables := backupTables()
-	models := make([]any, 0, len(tables)+1)
+	models := make([]any, 0, len(tables))
 	for _, table := range tables {
 		models = append(models, table.model)
 	}
-	models = append(models, &model.XUISyncProfile{}, &model.XUIKnownHost{})
 	if err := db.AutoMigrate(models...); err != nil {
 		b.Fatal(err)
 	}

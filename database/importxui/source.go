@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/deposist/s-ui-x/database"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -240,4 +242,35 @@ func nullJSON(v sql.NullString) json.RawMessage {
 		return nil
 	}
 	return json.RawMessage(value)
+}
+
+// ValidateSQLiteSource confirms that path is a readable, integrity-clean SQLite
+// file in a recognised x-ui dialect before it is used as an import source.
+func ValidateSQLiteSource(path string) error {
+	// #nosec G304 -- path is an operator-supplied import source file validated by the caller.
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	ok, err := database.IsSQLiteDB(file)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("not_sqlite")
+	}
+	src, err := openSource(path)
+	if err != nil {
+		return err
+	}
+	defer src.close()
+	var result string
+	if err := src.db.Raw("PRAGMA integrity_check").Scan(&result).Error; err != nil {
+		return err
+	}
+	if result != "ok" {
+		return fmt.Errorf("invalid sqlite integrity: %s", result)
+	}
+	return nil
 }

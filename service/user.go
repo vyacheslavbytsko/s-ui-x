@@ -45,7 +45,6 @@ var allowedAPITokenScopes = []string{
 	"database",
 	"telegram",
 	"observability",
-	"xui_remote",
 }
 
 func (s *UserService) GetFirstUser() (*model.User, error) {

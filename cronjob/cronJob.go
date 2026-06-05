@@ -20,7 +20,7 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 		cron.WithSeconds(),
 		// Recover keeps a panicking job (e.g. a nil-deref in a goroutine) from
 		// taking down the whole panel process; SkipIfStillRunning prevents a
-		// slow job (notably XUISyncJob @every 1m) from overlapping itself.
+		// slow job from overlapping itself.
 		cron.WithChain(
 			cron.Recover(cronLogger{}),
 			cron.SkipIfStillRunning(cronLogger{}),
@@ -66,10 +66,6 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 	}
 	// database WAL checkpoint
 	if _, err := c.cron.AddJob("@every 10m", NewWALCheckpointJob()); err != nil {
-		return err
-	}
-	// 3x-ui scheduled sync profiles
-	if _, err := c.cron.AddJob("@every 1m", NewXUISyncJob()); err != nil {
 		return err
 	}
 	// retention cleanup

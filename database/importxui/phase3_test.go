@@ -1,11 +1,8 @@
 package importxui
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -56,38 +53,6 @@ func TestDialectUnknown(t *testing.T) {
 	_, err = openSource(path)
 	if !errors.Is(err, ErrDialectUnknown) {
 		t.Fatalf("expected ErrDialectUnknown, got %v", err)
-	}
-}
-
-func TestProfileEncryptionHidesPlaintextAndKeyFileOverride(t *testing.T) {
-	secret := []byte(`{"type":"ssh","password":"plain-password","keyPath":"/root/.ssh/id"}`)
-	ciphertext, salt, err := EncryptProfileSource(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(ciphertext, []byte("plain-password")) || bytes.Contains(ciphertext, []byte("/root/.ssh/id")) {
-		t.Fatalf("ciphertext leaked plaintext: %q", ciphertext)
-	}
-	opened, err := DecryptProfileSource(ciphertext, salt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(opened, secret) {
-		t.Fatalf("decrypted payload mismatch: %s", opened)
-	}
-
-	keyPath := filepath.Join(t.TempDir(), "xui-profile.key")
-	key := bytes.Repeat([]byte{7}, 32)
-	if err := os.WriteFile(keyPath, []byte(base64.StdEncoding.EncodeToString(key)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XUI_PROFILE_KEY_FILE", keyPath)
-	ciphertext, salt, err = EncryptProfileSource(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := DecryptProfileSource(ciphertext, salt); err != nil {
-		t.Fatalf("key-file override failed: %v", err)
 	}
 }
 

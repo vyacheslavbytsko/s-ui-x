@@ -169,7 +169,7 @@ export default {
         expiry: 0,
         scope: 'admin',
       },
-      tokenScopes: ['admin', 'database', 'xui_remote', 'write', 'read', 'observability', 'telegram'],
+      tokenScopes: ['admin', 'database', 'write', 'read', 'observability', 'telegram'],
       delOverlay: new Array<boolean>(0),
     }
   },

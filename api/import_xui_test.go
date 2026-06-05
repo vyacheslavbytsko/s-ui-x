@@ -420,55 +420,6 @@ func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 	}
 }
 
-func TestXUIRemotePlanRequiresRemoteScope(t *testing.T) {
-	settingService, _ := setupXuiAPITestDB(t)
-	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/remote/plan", withTestTokenScope("db-token", "database", (&ApiService{}).ImportXuiRemotePlan))
-	})
-	req := httptest.NewRequest(http.MethodPost, "/api/import-xui/remote/plan", strings.NewReader(`{"source":{"type":"file","url":"unused"}}`))
-	req.Header.Set("Content-Type", "application/json")
-	recorder := performAuthenticatedTestRequest(router, req, cookies...)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("database scope should not access remote source, got %d", recorder.Code)
-	}
-	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ? AND resource = ?", "scope_denied", "xui_remote").First(&event).Error; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestXUISyncProfileStoresEncryptedSource(t *testing.T) {
-	settingService, _ := setupXuiAPITestDB(t)
-	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/sync/profiles", withTestTokenScope("remote-token", "xui_remote", (&ApiService{}).SaveXUISyncProfile))
-	})
-	// A scoped xui_remote token may only save http(s) sources (file/ssh are
-	// admin-only, M3/M4). This test verifies the source is stored encrypted (no
-	// plaintext host/password leak), which is source-type-agnostic, so it uses a
-	// public http source carrying a password.
-	body := strings.NewReader(`{"name":"remote-prod","sourceType":"xuihttp","strategy":"merge","onlyNew":true,"enabled":true,"schedule":"0 */6 * * *","source":{"type":"xuihttp","baseUrl":"http://1.1.1.1:2053","username":"user","password":"plain-password"}}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/import-xui/sync/profiles", body)
-	req.Header.Set("Content-Type", "application/json")
-	recorder := performAuthenticatedTestRequest(router, req, cookies...)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("save profile status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	var profile model.XUISyncProfile
-	if err := database.GetDB().Where("name = ?", "remote-prod").First(&profile).Error; err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(profile.SourceJSON), "plain-password") || strings.Contains(string(profile.SourceJSON), "1.1.1.1") {
-		t.Fatalf("encrypted source leaked plaintext: %q", profile.SourceJSON)
-	}
-	source, err := importxui.LoadSyncProfileSource(profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if source.Password != "plain-password" || source.Type != "xuihttp" {
-		t.Fatalf("decrypted source mismatch: %#v", source)
-	}
-}
-
 func setupXuiAPITestDB(t *testing.T) (*service.SettingService, string) {
 	t.Helper()
 	closeAPITestDB(t)
